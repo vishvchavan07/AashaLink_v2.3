@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="add_family_member">Add Family Member</string>
+    <string name="add_family_member_plus">+ Add Family Member</string>
+    <string name="full_name_required">Full Name *</string>
+    <string name="hint_full_name">Enter full name</string>
+    <string name="relation_required">Relation *</string>
+    <string name="mobile_number_required">Mobile Number *</string>
+    <string name="mark_as_primary">Mark as Primary Contact</string>
+    <string name="add_contact">Add Contact</string>
+    <string name="emergency_contacts_setup">Emergency Contacts Setup</string>
+    <string name="sos_info_text">SOS will send your live location to all saved contacts via SMS automatically</string>
+    <string name="family_members">Family Members</string>
+    <string name="supervisor_anm_details">Supervisor / ANM Details</string>
+    <string name="edit">Edit</string>
+    <string name="save">Save</string>
+    <string name="hint_supervisor_name">Supervisor / ANM name</string>
+    <string name="nearby_asha_workers">Nearby Asha Workers</string>
+    <string name="within_5km">Within 5 km</string>
+    <string name="auto_detected_subtitle">Auto-detected within 5 km radius</string>
+    <string name="detecting_workers">Detecting nearby workers...</string>
+    <string name="no_workers_nearby">No Asha workers found nearby</string>
+    <string name="nearby_info_footer">Nearby workers are auto-detected from Firebase. Distance updates when you open the app.</string>
+    <string name="refresh">Refresh</string>
+    <string name="sos_message_preview">SOS message preview</string>
+    <string name="location_link_note">Location link will be auto-filled when SOS is pressed</string>
+    <string name="save_emergency_contacts">Save Emergency Contacts</string>
+    <string name="max_family_limit">Maximum 3 family contacts allowed</string>
+    <string name="contacts_saved">Contacts saved</string>
+    <string name="open_settings">Open Settings</string>
+    <string name="location_permission_denied">Location permission is required to detect nearby workers. Please enable it in settings.</string>
+    <string name="location_services_disabled">Location services are disabled. Please enable GPS to find nearby workers.</string>
+    <string name="error_name_empty">Name cannot be empty</string>
+    <string name="error_invalid_phone">Enter a valid 10-digit number</string>
+    
+    <string-array name="designations">
+        <item>ANM</item>
+        <item>PHC Doctor</item>
+        <item>Block Health Officer</item>
+        <item>CDMO</item>
+        <item>Other</item>
+    </string-array>
+</resources>

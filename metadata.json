@@ -1,0 +1,9 @@
+{
+  "name": "Remix: AashaLink",
+  "description": "A comprehensive healthcare connectivity app providing voice diaries, patient records, blood bank info, bed availability, and emergency SOS services.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
