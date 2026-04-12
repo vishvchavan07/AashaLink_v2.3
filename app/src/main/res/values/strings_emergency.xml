@@ -40,4 +40,16 @@
         <item>CDMO</item>
         <item>Other</item>
     </string-array>
+
+    <string-array name="relations">
+        <item>Husband</item>
+        <item>Wife</item>
+        <item>Father</item>
+        <item>Mother</item>
+        <item>Brother</item>
+        <item>Sister</item>
+        <item>Son</item>
+        <item>Daughter</item>
+        <item>Other</item>
+    </string-array>
 </resources>

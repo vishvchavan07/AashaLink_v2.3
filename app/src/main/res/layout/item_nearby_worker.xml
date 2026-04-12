@@ -25,13 +25,22 @@
             android:textSize="14sp"
             android:textStyle="bold" />
 
+        <View
+            android:id="@+id/viewStatus"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:layout_alignEnd="@id/tvInitials"
+            android:layout_alignBottom="@id/tvInitials"
+            android:background="@drawable/bg_circle_green"
+            android:elevation="2dp" />
+
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_centerVertical="true"
             android:layout_marginStart="12dp"
             android:layout_toEndOf="@id/tvInitials"
-            android:layout_toStartOf="@id/switchAlert"
+            android:layout_toStartOf="@id/layoutSwitches"
             android:orientation="vertical">
 
             <LinearLayout
@@ -48,6 +57,16 @@
                     android:textColor="@color/black"
                     android:textSize="14sp"
                     android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvDesignation"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="(ANM)"
+                    android:textColor="@color/gray_dark"
+                    android:textSize="11sp"
+                    android:textStyle="italic" />
 
                 <TextView
                     android:id="@+id/tvAlertBadge"
@@ -70,15 +89,63 @@
                 android:text="Shirur • 2.1 km away"
                 android:textColor="@color/gray"
                 android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/tvAshaId"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="ID: ASHA12345"
+                android:textColor="@color/blue_primary"
+                android:textSize="10sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
-        <androidx.appcompat.widget.SwitchCompat
-            android:id="@+id/switchAlert"
+        <LinearLayout
+            android:id="@+id/layoutSwitches"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
-            android:checked="true" />
+            android:gravity="end"
+            android:orientation="vertical">
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/switchActive"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Online"
+                android:textSize="10sp"
+                app:switchPadding="4dp" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/switchAlert"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:text="Alert"
+                android:textSize="10sp"
+                app:switchPadding="4dp" />
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnCall"
+            style="@style/Widget.MaterialComponents.Button.TextButton.Icon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerVertical="true"
+            android:layout_marginEnd="4dp"
+            android:layout_toStartOf="@id/layoutSwitches"
+            android:minWidth="0dp"
+            android:padding="8dp"
+            android:text="Call"
+            android:textAllCaps="false"
+            android:textColor="@color/blue_primary"
+            android:textSize="12sp"
+            app:icon="@drawable/ic_call"
+            app:iconPadding="4dp"
+            app:iconSize="18dp"
+            app:iconTint="@color/blue_primary" />
 
     </RelativeLayout>
 </com.google.android.material.card.MaterialCardView>

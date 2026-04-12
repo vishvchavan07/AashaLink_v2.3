@@ -13,9 +13,10 @@ data class EmergencyContact(
     val village: String = "",       // for nearby asha workers
     val distanceKm: Double = -1.0,  // -1.0 indicates N/A (e.g. for family/supervisor)
     val isPrimary: Boolean = false, // primary family contact
-    val isAutoAlert: Boolean = true,// auto include in SOS
+    var isAutoAlert: Boolean = true,// auto include in SOS
     val ashaId: String = "",        // for nearby asha workers
     val latitude: Double = 0.0,     // for nearby asha workers
     val longitude: Double = 0.0,    // for nearby asha workers
+    var isActive: Boolean = true,   // for nearby asha workers availability
     val addedAt: Long = System.currentTimeMillis()
 )

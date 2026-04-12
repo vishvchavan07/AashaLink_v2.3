@@ -18,13 +18,19 @@ class AddContactBottomSheet : BottomSheetDialogFragment() {
     private val binding get() = _binding!!
 
     private var listener: OnContactAddedListener? = null
+    private var editingContact: EmergencyContact? = null
 
     interface OnContactAddedListener {
         fun onContactAdded(contact: EmergencyContact)
+        fun onContactUpdated(contact: EmergencyContact)
     }
 
     fun setOnContactAddedListener(listener: OnContactAddedListener) {
         this.listener = listener
+    }
+
+    fun setEditingContact(contact: EmergencyContact) {
+        this.editingContact = contact
     }
 
     override fun onCreateView(
@@ -41,24 +47,34 @@ class AddContactBottomSheet : BottomSheetDialogFragment() {
 
         setupRelationSpinner()
 
+        editingContact?.let { contact ->
+            binding.tvTitle.text = "Edit Contact"
+            binding.btnAddContact.text = "Update Contact"
+            binding.etName.setText(contact.name)
+            val phone = if (contact.phone.startsWith("+91")) contact.phone.substring(3) else contact.phone
+            binding.etPhone.setText(phone)
+            binding.cbPrimary.isChecked = contact.isPrimary
+            
+            val relations = resources.getStringArray(R.array.relations)
+            val index = relations.indexOf(contact.relation)
+            if (index >= 0) binding.spinnerRelation.setSelection(index)
+        }
+
         binding.btnClose.setOnClickListener { dismiss() }
 
         binding.btnAddContact.setOnClickListener {
-            validateAndAdd()
+            validateAndSave()
         }
     }
 
     private fun setupRelationSpinner() {
-        val relations = arrayOf(
-            "Husband", "Wife", "Father", "Mother", 
-            "Brother", "Sister", "Son", "Daughter", "Other"
-        )
+        val relations = resources.getStringArray(R.array.relations)
         val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, relations)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerRelation.adapter = adapter
     }
 
-    private fun validateAndAdd() {
+    private fun validateAndSave() {
         val name = binding.etName.text.toString().trim()
         val phone = binding.etPhone.text.toString().trim()
         val relation = binding.spinnerRelation.selectedItem.toString()
@@ -74,7 +90,12 @@ class AddContactBottomSheet : BottomSheetDialogFragment() {
             return
         }
 
-        val contact = EmergencyContact(
+        val contact = editingContact?.copy(
+            name = name,
+            phone = "+91$phone",
+            relation = relation,
+            isPrimary = isPrimary
+        ) ?: EmergencyContact(
             id = UUID.randomUUID().toString(),
             name = name,
             phone = "+91$phone",
@@ -84,7 +105,11 @@ class AddContactBottomSheet : BottomSheetDialogFragment() {
             addedAt = System.currentTimeMillis()
         )
 
-        listener?.onContactAdded(contact)
+        if (editingContact != null) {
+            listener?.onContactUpdated(contact)
+        } else {
+            listener?.onContactAdded(contact)
+        }
         dismiss()
     }
 

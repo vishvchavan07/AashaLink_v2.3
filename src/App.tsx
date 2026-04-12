@@ -61,6 +61,7 @@ L.Marker.prototype.options.icon = DefaultIcon;
 // --- Types ---
 type NetworkStatus = 'Good' | 'Poor' | 'No network';
 type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'offline';
+type Language = 'English' | 'Hindi' | 'Marathi' | 'Tamil' | 'Kannada';
 type Screen = 'home' | 'patient-records' | 'blood-bank' | 'med-assistant' | 'bed-availability' | 'voice-diary' | 'settings' | 'language' | 'login' | 'profile';
 type Patient = { 
   name: string; 
@@ -74,7 +75,7 @@ type Patient = {
   emergencyContact: string;
   address: string;
 };
-type BloodBank = { name: string; address: string; phone: string; lat: number; lng: number; groups: string[]; distance: number };
+type BloodBank = { name: string; address: string; phone: string; lat: number; lng: number; groups: string[]; lowStockGroups?: string[]; distance: number };
 type VoiceDiaryEntry = { id: string; patientName: string; date: string; duration: string; transcript: string };
 
 type MedicalRecord = {
@@ -86,6 +87,144 @@ type MedicalRecord = {
   red_flags: string;
   remedies: string;
   duration_warning: string;
+};
+
+const translations: Record<Language, any> = {
+  English: {
+    home: "Home",
+    records: "Records",
+    voice: "Voice",
+    profile: "Profile",
+    selectLanguage: "Select Language",
+    ashaLink: "AashaLink",
+    patientRecords: "Patient Records",
+    bloodBank: "Blood Bank",
+    bedAvailability: "Bed Availability",
+    medAssistant: "Medi Assistant",
+    voiceDiary: "Voice Diary",
+    settings: "Settings",
+    helpSupport: "Help & Support",
+    logout: "Logout",
+    voiceDiaryLabel: "Voice Diary",
+    patientRecordsLabel: "Patient Records",
+    bedAvailabilityLabel: "Bed Availability",
+    bloodBankLabel: "Blood Bank",
+    mediAssistantLabel: "Medi Assistant",
+    mediAssistantSub: "AI-powered medical support",
+    personalDetails: "Personal Details",
+    assignedVillage: "Assigned Village",
+    ashaId: "Asha ID",
+    contactNumber: "Contact Number",
+    designation: "Designation"
+  },
+  Hindi: {
+    home: "होम",
+    records: "रिकॉर्ड्स",
+    voice: "आवाज़",
+    profile: "प्रोफ़ाइल",
+    selectLanguage: "भाषा चुनें",
+    ashaLink: "आशा लिंक",
+    patientRecords: "रोगी रिकॉर्ड",
+    bloodBank: "ब्लड बैंक",
+    bedAvailability: "बिस्तर की उपलब्धता",
+    medAssistant: "मेड असिस्टेंट",
+    voiceDiary: "वॉयस डायरी",
+    settings: "सेटिंग्स",
+    helpSupport: "सहायता और समर्थन",
+    logout: "लॉगआउट",
+    voiceDiaryLabel: "वॉयस डायरी",
+    patientRecordsLabel: "रोगी रिकॉर्ड",
+    bedAvailabilityLabel: "बिस्तर उपलब्धता",
+    bloodBankLabel: "ब्लड बैंक",
+    mediAssistantLabel: "मेड असिस्टेंट",
+    mediAssistantSub: "AI-आधारित चिकित्सा सहायता",
+    personalDetails: "व्यक्तिगत विवरण",
+    assignedVillage: "नियुक्त गाँव",
+    ashaId: "आशा आईडी",
+    contactNumber: "संपर्क नंबर",
+    designation: "पद"
+  },
+  Marathi: {
+    home: "होम",
+    records: "रेकॉर्ड्स",
+    voice: "आवाज",
+    profile: "प्रोफाइल",
+    selectLanguage: "भाषा निवडा",
+    ashaLink: "आशा लिंक",
+    patientRecords: "रुग्ण रेकॉर्ड",
+    bloodBank: "ब्लड बँक",
+    bedAvailability: "बेड उपलब्धता",
+    medAssistant: "मेड असिस्टंट",
+    voiceDiary: "व्हॉइस डायरी",
+    settings: "सेटिंग्ज",
+    helpSupport: "मदत आणि समर्थन",
+    logout: "लॉगआउट",
+    voiceDiaryLabel: "व्हॉइस डायरी",
+    patientRecordsLabel: "रुग्ण रेकॉर्ड",
+    bedAvailabilityLabel: "बेड उपलब्धता",
+    bloodBankLabel: "ब्लड बँक",
+    mediAssistantLabel: "मेड असिस्टंट",
+    mediAssistantSub: "AI-आधारित वैद्यकीय मदत",
+    personalDetails: "वैयक्तिक तपशील",
+    assignedVillage: "नियुक्त गाव",
+    ashaId: "आशा आयडी",
+    contactNumber: "संपर्क क्रमांक",
+    designation: "पद"
+  },
+  Tamil: {
+    home: "முகப்பு",
+    records: "பதிவுகள்",
+    voice: "குரல்",
+    profile: "சுயவிவரம்",
+    selectLanguage: "மொழியைத் தேர்ந்தெடுக்கவும்",
+    ashaLink: "ஆஷா லிங்க்",
+    patientRecords: "நோயாளி பதிவுகள்",
+    bloodBank: "இரத்த வங்கி",
+    bedAvailability: "படுக்கை வசதி",
+    medAssistant: "மருத்துவ உதவியாளர்",
+    voiceDiary: "குரல் நாட்குறிப்பு",
+    settings: "அமைப்புகள்",
+    helpSupport: "உதவி மற்றும் ஆதரவு",
+    logout: "வெளியேறு",
+    voiceDiaryLabel: "குரல் நாட்குறிப்பு",
+    patientRecordsLabel: "நோயாளி பதிவுகள்",
+    bedAvailabilityLabel: "படுக்கை வசதி",
+    bloodBankLabel: "இரத்த வங்கி",
+    mediAssistantLabel: "மருத்துவ உதவியாளர்",
+    mediAssistantSub: "AI-இயங்கும் மருத்துவ ஆதரவு",
+    personalDetails: "தனிப்பட்ட விவரங்கள்",
+    assignedVillage: "ஒதுக்கப்பட்ட கிராமம்",
+    ashaId: "ஆஷா ஐடி",
+    contactNumber: "தொடர்பு எண்",
+    designation: "பதவி"
+  },
+  Kannada: {
+    home: "ಮುಖಪುಟ",
+    records: "ದಾಖಲೆಗಳು",
+    voice: "ಧ್ವನಿ",
+    profile: "ಪ್ರೊಫೈಲ್",
+    selectLanguage: "ಭಾಷೆಯನ್ನು ಆರಿಸಿ",
+    ashaLink: "ಆಶಾ ಲಿಂಕ್",
+    patientRecords: "ರೋಗಿಗಳ ದಾಖಲೆಗಳು",
+    bloodBank: "ರಕ್ತ ನಿಧಿ",
+    bedAvailability: "ಹಾಸಿಗೆ ಲಭ್ಯತೆ",
+    medAssistant: "ವೈದ್ಯಕೀಯ ಸಹಾಯಕ",
+    voiceDiary: "ಧ್ವನಿ ಡೈರಿ",
+    settings: "ಸೆಟ್ಟಿಂಗ್‌ಗಳು",
+    helpSupport: "ಸಹಾಯ ಮತ್ತು ಬೆಂಬಲ",
+    logout: "ಲಾಗ್ ಔಟ್",
+    voiceDiaryLabel: "ಧ್ವನಿ ಡೈರಿ",
+    patientRecordsLabel: "ರೋಗಿಗಳ ದಾಖಲೆಗಳು",
+    bedAvailabilityLabel: "ಹಾಸಿಗೆ ಲಭ್ಯತೆ",
+    bloodBankLabel: "ರಕ್ತ ನಿಧಿ",
+    mediAssistantLabel: "ವೈದ್ಯಕೀಯ ಸಹಾಯಕ",
+    mediAssistantSub: "AI-ಚಾಲಿತ ವೈದ್ಯಕೀಯ ಬೆಂಬಲ",
+    personalDetails: "ವೈಯಕ್ತಿಕ ವಿವರಗಳು",
+    assignedVillage: "ನಿಯೋಜಿತ ಗ್ರಾಮ",
+    ashaId: "ಆಶಾ ಐಡಿ",
+    contactNumber: "ಸಂಪರ್ಕ ಸಂಖ್ಯೆ",
+    designation: "ಹುದ್ದೆ"
+  }
 };
 
 // --- Components ---
@@ -164,6 +303,30 @@ const DrawerItem = ({ icon: Icon, label, isRed = false, onClick }: { icon: any; 
   </button>
 );
 
+const HighlightText = ({ text, query }: { text: string, query: string }) => {
+  if (!query.trim()) return <>{text}</>;
+  
+  const terms = query.toLowerCase().trim().split(/\s+/).filter(t => t.length > 0);
+  if (terms.length === 0) return <>{text}</>;
+  
+  const regex = new RegExp(`(${terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
+  const parts = text.split(regex);
+  
+  return (
+    <>
+      {parts.map((part, i) => 
+        regex.test(part) ? (
+          <mark key={i} className="bg-primary-100 text-primary-900 rounded-sm px-0.5 font-bold">
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+};
+
 // --- Main App ---
 
 export default function App() {
@@ -171,11 +334,14 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
+  const [selectedLanguage, setSelectedLanguage] = useState<Language>('English');
   const [showHelpDialog, setShowHelpDialog] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showDeleteDiaryConfirm, setShowDeleteDiaryConfirm] = useState(false);
   const [isSosActive, setIsSosActive] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  const t = translations[selectedLanguage];
 
   const emergencyServices = [
     { name: 'City Hospital (Emergency)', type: 'Hospital', lat: 34.0522, lng: -118.2437, phone: '108' },
@@ -297,9 +463,12 @@ export default function App() {
   }, [patients]);
 
   const filteredPatients = patients.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.disease.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.loc.toLowerCase().includes(searchQuery.toLowerCase());
+    const terms = searchQuery.toLowerCase().trim().split(/\s+/).filter(t => t.length > 0);
+    const matchesSearch = terms.length === 0 || terms.every(term => 
+      p.name.toLowerCase().includes(term) ||
+      p.disease.toLowerCase().includes(term) ||
+      p.loc.toLowerCase().includes(term)
+    );
     const matchesDate = patientDateFilter ? p.date === patientDateFilter : true;
     const matchesBloodGroup = patientBloodGroupFilter ? p.bloodGroup === patientBloodGroupFilter : true;
     return matchesSearch && matchesDate && matchesBloodGroup;
@@ -339,11 +508,11 @@ export default function App() {
   const [bbViewMode, setBbViewMode] = useState<'list' | 'map'>('list');
 
   const bloodBanksData: BloodBank[] = [
-    { name: 'City Central Blood Bank', address: '123 Health Ave, Downtown', phone: '9876543210', lat: 34.05, lng: -118.24, groups: ['A+', 'A-', 'O+', 'O-'], distance: 5 },
-    { name: 'Red Cross Rural Center', address: '45 Village Road, Outskirts', phone: '9876543211', lat: 34.06, lng: -118.25, groups: ['B+', 'B-', 'AB+', 'O+'], distance: 15 },
-    { name: 'LifeLine Hospital', address: '789 Medical Blvd', phone: '9876543212', lat: 34.07, lng: -118.26, groups: ['A+', 'B+', 'AB+', 'AB-', 'O+'], distance: 8 },
-    { name: 'Hope Donation Camp', address: 'Community Hall, Sector 4', phone: '9876543213', lat: 34.08, lng: -118.27, groups: ['A-', 'B-', 'O-'], distance: 25 },
-    { name: 'Metro Care Blood Bank', address: 'Station Road, East Wing', phone: '9876543214', lat: 34.09, lng: -118.28, groups: ['A+', 'AB+', 'O+', 'O-'], distance: 12 },
+    { name: 'City Central Blood Bank', address: '123 Health Ave, Downtown', phone: '9876543210', lat: 34.05, lng: -118.24, groups: ['A+', 'A-', 'O+', 'O-'], lowStockGroups: ['A-', 'O-'], distance: 5 },
+    { name: 'Red Cross Rural Center', address: '45 Village Road, Outskirts', phone: '9876543211', lat: 34.06, lng: -118.25, groups: ['B+', 'B-', 'AB+', 'O+'], lowStockGroups: ['B-', 'AB+'], distance: 15 },
+    { name: 'LifeLine Hospital', address: '789 Medical Blvd', phone: '9876543212', lat: 34.07, lng: -118.26, groups: ['A+', 'B+', 'AB+', 'AB-', 'O+'], lowStockGroups: ['AB-'], distance: 8 },
+    { name: 'Hope Donation Camp', address: 'Community Hall, Sector 4', phone: '9876543213', lat: 34.08, lng: -118.27, groups: ['A-', 'B-', 'O-'], lowStockGroups: ['A-', 'B-', 'O-'], distance: 25 },
+    { name: 'Metro Care Blood Bank', address: 'Station Road, East Wing', phone: '9876543214', lat: 34.09, lng: -118.28, groups: ['A+', 'AB+', 'O+', 'O-'], lowStockGroups: ['O-'], distance: 12 },
   ];
 
   const filteredBloodBanks = bloodBanksData.filter(bb => {
@@ -355,10 +524,20 @@ export default function App() {
         if (!bb.groups.some(g => g.startsWith(selectedBloodGroup))) return false;
       }
     }
-    if (bbSearchQuery && !bb.name.toLowerCase().includes(bbSearchQuery.toLowerCase())) return false;
+    if (bbSearchQuery) {
+      const terms = bbSearchQuery.toLowerCase().trim().split(/\s+/).filter(t => t.length > 0);
+      if (!terms.every(term => bb.name.toLowerCase().includes(term) || bb.address.toLowerCase().includes(term))) return false;
+    }
     if (bb.distance > maxDistance) return false;
     return true;
   }).sort((a, b) => a.distance - b.distance);
+
+  const allLowStock = filteredBloodBanks.reduce((acc, bb) => {
+    if (bb.lowStockGroups && bb.lowStockGroups.length > 0) {
+      acc.push({ name: bb.name, groups: bb.lowStockGroups });
+    }
+    return acc;
+  }, [] as { name: string; groups: string[] }[]);
 
   // --- Voice Diary State ---
   const [isRecording, setIsRecording] = useState(false);
@@ -371,9 +550,30 @@ export default function App() {
   ]);
   const [diarySearchQuery, setDiarySearchQuery] = useState('');
   const [diaryDateFilter, setDiaryDateFilter] = useState('');
+  const [diarySortBy, setDiarySortBy] = useState<'date-newest' | 'date-oldest' | 'name-az' | 'name-za'>('date-newest');
   const [diaryTab, setDiaryTab] = useState<'record' | 'list'>('record');
   const [isPlaying, setIsPlaying] = useState<string | null>(null);
   const [diaryToDelete, setDiaryToDelete] = useState<VoiceDiaryEntry | null>(null);
+
+  const filteredVoiceDiaries = React.useMemo(() => {
+    return voiceDiaries
+      .filter(d => {
+        const terms = diarySearchQuery.toLowerCase().trim().split(/\s+/).filter(t => t.length > 0);
+        const matchesSearch = terms.length === 0 || terms.every(term => 
+          d.patientName.toLowerCase().includes(term) || 
+          d.transcript.toLowerCase().includes(term)
+        );
+        const matchesDate = diaryDateFilter ? d.date === diaryDateFilter : true;
+        return matchesSearch && matchesDate;
+      })
+      .sort((a, b) => {
+        if (diarySortBy === 'date-newest') return b.date.localeCompare(a.date);
+        if (diarySortBy === 'date-oldest') return a.date.localeCompare(b.date);
+        if (diarySortBy === 'name-az') return a.patientName.localeCompare(b.patientName);
+        if (diarySortBy === 'name-za') return b.patientName.localeCompare(a.patientName);
+        return 0;
+      });
+  }, [voiceDiaries, diarySearchQuery, diaryDateFilter, diarySortBy]);
 
   useEffect(() => {
     if ('webkitSpeechRecognition' in window) {
@@ -722,16 +922,16 @@ export default function App() {
           )}
         <div className="flex flex-col items-center">
           <h1 className="text-xl font-extrabold text-stone-800 tracking-tight">
-            {currentScreen === 'home' && 'AashaLink'}
-            {currentScreen === 'patient-records' && 'Patient Records'}
-            {currentScreen === 'blood-bank' && (selectedBloodGroup ? `Blood: ${selectedBloodGroup}` : 'Blood Bank')}
-            {currentScreen === 'bed-availability' && 'Bed Availability'}
-            {currentScreen === 'med-assistant' && 'Medi Assistant'}
-            {currentScreen === 'voice-diary' && 'Voice Diary'}
-            {currentScreen === 'settings' && 'Settings'}
-            {currentScreen === 'language' && 'Language Switch'}
+            {currentScreen === 'home' && t.ashaLink}
+            {currentScreen === 'patient-records' && t.patientRecords}
+            {currentScreen === 'blood-bank' && (selectedBloodGroup ? `Blood: ${selectedBloodGroup}` : t.bloodBank)}
+            {currentScreen === 'bed-availability' && t.bedAvailability}
+            {currentScreen === 'med-assistant' && t.medAssistant}
+            {currentScreen === 'voice-diary' && t.voiceDiary}
+            {currentScreen === 'settings' && t.settings}
+            {currentScreen === 'language' && t.selectLanguage}
             {currentScreen === 'login' && 'Login'}
-            {currentScreen === 'profile' && 'Profile'}
+            {currentScreen === 'profile' && t.profile}
           </h1>
           {activePatient && (
             <span className="text-[10px] font-bold uppercase tracking-wider text-primary-700 bg-primary-50 px-2.5 py-0.5 rounded-full mt-0.5">
@@ -846,10 +1046,10 @@ export default function App() {
               <>
                 {/* Feature Grid (2x2) */}
                 <div className="grid grid-cols-2 gap-4 mb-12">
-                  <FeatureCard icon={Mic} label="Voice Diary" onClick={() => setCurrentScreen('voice-diary')} />
-                  <FeatureCard icon={FileText} label="Patient Records" onClick={() => setCurrentScreen('patient-records')} />
-                  <FeatureCard icon={Bed} label="Bed Availability" onClick={() => setCurrentScreen('bed-availability')} />
-                  <FeatureCard icon={Droplet} label="Blood Bank" onClick={() => { setCurrentScreen('blood-bank'); setSelectedBloodGroup(null); }} />
+                  <FeatureCard icon={Mic} label={t.voiceDiaryLabel} onClick={() => setCurrentScreen('voice-diary')} />
+                  <FeatureCard icon={FileText} label={t.patientRecordsLabel} onClick={() => setCurrentScreen('patient-records')} />
+                  <FeatureCard icon={Bed} label={t.bedAvailabilityLabel} onClick={() => setCurrentScreen('bed-availability')} />
+                  <FeatureCard icon={Droplet} label={t.bloodBankLabel} onClick={() => { setCurrentScreen('blood-bank'); setSelectedBloodGroup(null); }} />
                 </div>
 
                 {/* Center SOS Element */}
@@ -906,8 +1106,8 @@ export default function App() {
                     <PlusSquare className="w-8 h-8 text-white" />
                   </div>
                   <div className="text-left flex-1">
-                    <h3 className="text-lg font-extrabold text-stone-800">Medi Assistant</h3>
-                    <p className="text-xs text-stone-500 font-medium mt-0.5">AI-powered medical support</p>
+                    <h3 className="text-lg font-extrabold text-stone-800">{t.mediAssistantLabel}</h3>
+                    <p className="text-xs text-stone-500 font-medium mt-0.5">{t.mediAssistantSub}</p>
                   </div>
                   <div className="w-10 h-10 rounded-full bg-primary-50 flex items-center justify-center group-hover:bg-primary-100 transition-colors">
                     <Activity className="w-5 h-5 text-primary-600" />
@@ -925,8 +1125,16 @@ export default function App() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search patients..." 
-                className="w-full pl-12 pr-4 py-3.5 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-sm"
+                className="w-full pl-12 pr-12 py-3.5 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-sm"
               />
+              {searchQuery && (
+                <button 
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-rose-500 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
             
             {/* Advanced Filters */}
@@ -972,8 +1180,12 @@ export default function App() {
                     <div className="flex-1">
                       <div className="flex justify-between items-start">
                         <div>
-                          <h3 className="font-extrabold text-stone-800 text-lg">{p.name}</h3>
-                          <p className="text-sm text-stone-500 mt-0.5 font-medium">Age: {p.age} • Loc: {p.loc}</p>
+                          <h3 className="font-extrabold text-stone-800 text-lg">
+                            <HighlightText text={p.name} query={searchQuery} />
+                          </h3>
+                          <p className="text-sm text-stone-500 mt-0.5 font-medium">
+                            Age: {p.age} • Loc: <HighlightText text={p.loc} query={searchQuery} />
+                          </p>
                           <p className="text-xs text-stone-400 mt-0.5 font-medium">DOB: {p.dob} • Blood: {p.bloodGroup}</p>
                           <p className="text-xs text-stone-400 mt-0.5 font-medium">Contact: {p.contact}</p>
                         </div>
@@ -992,7 +1204,7 @@ export default function App() {
                           {activePatient?.name === p.name ? 'Selected' : 'Select Patient'}
                         </button>
                         <span className="bg-primary-50 text-primary-700 border border-primary-100 text-xs font-bold px-3 py-1.5 rounded-full">
-                          {p.disease}
+                          <HighlightText text={p.disease} query={searchQuery} />
                         </span>
                       </div>
                     </div>
@@ -1146,8 +1358,16 @@ export default function App() {
                   value={bbSearchQuery}
                   onChange={(e) => setBbSearchQuery(e.target.value)}
                   placeholder="Search blood banks..." 
-                  className="w-full pl-12 pr-4 py-3.5 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-rose-500 shadow-sm"
+                  className="w-full pl-12 pr-12 py-3.5 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-rose-500 shadow-sm"
                 />
+                {bbSearchQuery && (
+                  <button 
+                    onClick={() => setBbSearchQuery('')}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-rose-500 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1181,6 +1401,28 @@ export default function App() {
                 </div>
               </div>
             </div>
+
+            {allLowStock.length > 0 && (
+              <motion.div 
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-rose-50 border border-rose-200 p-4 rounded-2xl mb-6 flex items-start gap-3"
+              >
+                <div className="bg-rose-100 p-2 rounded-full shrink-0">
+                  <AlertCircle className="w-5 h-5 text-rose-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-extrabold text-rose-800">Critical Stock Alert</p>
+                  <div className="mt-1 space-y-1">
+                    {allLowStock.map((alert, idx) => (
+                      <p key={idx} className="text-xs text-rose-700 font-medium">
+                        <span className="font-bold underline">{alert.groups.join(', ')}</span> low at <span className="font-bold">{alert.name}</span>
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            )}
 
             <div className="flex bg-stone-100 p-1 rounded-xl mb-6">
               <button 
@@ -1241,16 +1483,28 @@ export default function App() {
                   filteredBloodBanks.map((bb, i) => (
                     <div key={i} className="bg-white p-5 rounded-2xl border border-stone-100 shadow-sm">
                       <div className="flex justify-between items-start">
-                        <h3 className="font-extrabold text-stone-800 text-lg">{bb.name}</h3>
+                        <h3 className="font-extrabold text-stone-800 text-lg">
+                          <HighlightText text={bb.name} query={bbSearchQuery} />
+                        </h3>
                         <span className="bg-rose-50 text-rose-600 text-[10px] font-bold px-2 py-1 rounded-lg">{bb.distance} km</span>
                       </div>
-                      <p className="text-sm text-stone-500 mt-1 mb-3 font-medium">{bb.address}</p>
+                      <p className="text-sm text-stone-500 mt-1 mb-3 font-medium">
+                        <HighlightText text={bb.address} query={bbSearchQuery} />
+                      </p>
                       <div className="flex flex-wrap gap-1.5 mb-5">
-                        {bb.groups.map(g => (
-                          <span key={g} className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${selectedBloodGroup === g ? 'bg-rose-500 text-white' : 'bg-stone-100 text-stone-500'}`}>
-                            {g}
-                          </span>
-                        ))}
+                        {bb.groups.map(g => {
+                          const isLow = bb.lowStockGroups?.includes(g);
+                          return (
+                            <div key={g} className="relative">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${selectedBloodGroup === g ? 'bg-rose-500 text-white' : 'bg-stone-100 text-stone-500'}`}>
+                                {g}
+                              </span>
+                              {isLow && (
+                                <div className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full border border-white animate-pulse" />
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                       <div className="flex gap-3">
                         <button 
@@ -1397,48 +1651,66 @@ export default function App() {
                       placeholder="Search by patient or keyword..."
                       value={diarySearchQuery}
                       onChange={(e) => setDiarySearchQuery(e.target.value)}
-                      className="w-full bg-white border border-stone-200 rounded-2xl py-3.5 pl-12 pr-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-sm transition-all"
+                      className="w-full bg-white border border-stone-200 rounded-2xl py-3.5 pl-12 pr-12 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-sm transition-all"
                     />
-                  </div>
-                  <div className="flex items-center gap-2 bg-white border border-stone-200 rounded-2xl px-4 py-3 shadow-sm">
-                    <Calendar className="w-4 h-4 text-stone-400" />
-                    <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">Filter by Date</span>
-                    <input 
-                      type="date" 
-                      value={diaryDateFilter}
-                      onChange={(e) => setDiaryDateFilter(e.target.value)}
-                      className="flex-1 text-sm font-medium text-stone-700 bg-transparent focus:outline-none"
-                    />
-                    {diaryDateFilter && (
-                      <button onClick={() => setDiaryDateFilter('')} className="text-stone-400 hover:text-rose-500">
+                    {diarySearchQuery && (
+                      <button 
+                        onClick={() => setDiarySearchQuery('')}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-rose-500 transition-colors"
+                      >
                         <X className="w-4 h-4" />
                       </button>
                     )}
+                  </div>
+                  <div className="flex gap-3">
+                    <div className="flex-1 flex items-center gap-2 bg-white border border-stone-200 rounded-2xl px-4 py-3 shadow-sm">
+                      <Calendar className="w-4 h-4 text-stone-400" />
+                      <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">Date</span>
+                      <input 
+                        type="date" 
+                        value={diaryDateFilter}
+                        onChange={(e) => setDiaryDateFilter(e.target.value)}
+                        className="flex-1 text-sm font-medium text-stone-700 bg-transparent focus:outline-none"
+                      />
+                      {diaryDateFilter && (
+                        <button onClick={() => setDiaryDateFilter('')} className="text-stone-400 hover:text-rose-500">
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex-1 flex items-center gap-2 bg-white border border-stone-200 rounded-2xl px-4 py-3 shadow-sm">
+                      <Settings className="w-4 h-4 text-stone-400" />
+                      <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">Sort</span>
+                      <select 
+                        value={diarySortBy}
+                        onChange={(e) => setDiarySortBy(e.target.value as any)}
+                        className="flex-1 text-sm font-medium text-stone-700 bg-transparent focus:outline-none appearance-none"
+                      >
+                        <option value="date-newest">Newest</option>
+                        <option value="date-oldest">Oldest</option>
+                        <option value="name-az">Name A-Z</option>
+                        <option value="name-za">Name Z-A</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
                 {/* List */}
                 <div className="flex-1 overflow-y-auto space-y-4">
-                  {voiceDiaries.filter(d => {
-                    const matchesSearch = d.patientName.toLowerCase().includes(diarySearchQuery.toLowerCase()) || d.transcript.toLowerCase().includes(diarySearchQuery.toLowerCase());
-                    const matchesDate = diaryDateFilter ? d.date === diaryDateFilter : true;
-                    return matchesSearch && matchesDate;
-                  }).length === 0 ? (
+                  {filteredVoiceDiaries.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-3xl border border-stone-100">
                       <Mic className="w-12 h-12 text-stone-200 mx-auto mb-4" />
                       <p className="text-stone-500 font-bold">No entries found</p>
                       <p className="text-xs text-stone-400 mt-1">Try adjusting your search or filters</p>
                     </div>
                   ) : (
-                    voiceDiaries.filter(d => {
-                      const matchesSearch = d.patientName.toLowerCase().includes(diarySearchQuery.toLowerCase()) || d.transcript.toLowerCase().includes(diarySearchQuery.toLowerCase());
-                      const matchesDate = diaryDateFilter ? d.date === diaryDateFilter : true;
-                      return matchesSearch && matchesDate;
-                    }).map(diary => (
+                    filteredVoiceDiaries.map(diary => (
                       <div key={diary.id} className="bg-white border border-stone-100 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
                         <div className="flex justify-between items-start mb-3">
                           <div>
-                            <h4 className="font-extrabold text-stone-800 text-lg">{diary.patientName}</h4>
+                            <h4 className="font-extrabold text-stone-800 text-lg">
+                              <HighlightText text={diary.patientName} query={diarySearchQuery} />
+                            </h4>
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className="text-xs font-bold text-stone-400">{diary.date}</span>
                               <span className="w-1 h-1 rounded-full bg-stone-300" />
@@ -1461,7 +1733,7 @@ export default function App() {
                           </div>
                         </div>
                         <p className="text-sm text-stone-600 leading-relaxed line-clamp-3 bg-stone-50/50 p-3 rounded-xl border border-stone-50">
-                          {diary.transcript}
+                          <HighlightText text={diary.transcript} query={diarySearchQuery} />
                         </p>
                       </div>
                     ))
@@ -1593,7 +1865,7 @@ export default function App() {
               <User className="w-10 h-10 text-primary-600" />
             </div>
             <h2 className="text-2xl font-extrabold text-stone-800 mb-2">Welcome Back</h2>
-            <p className="text-stone-500 mb-8 text-center">Login to your AashaLink account</p>
+            <p className="text-stone-500 mb-8 text-center">Login to your {t.ashaLink} account</p>
             <button onClick={() => setCurrentScreen('home')} className="w-full bg-primary-600 text-white font-bold py-4 rounded-2xl hover:bg-primary-700 transition-colors shadow-lg shadow-primary-200">
               Login as Asha Worker
             </button>
@@ -1616,39 +1888,102 @@ export default function App() {
           </div>
         ) : currentScreen === 'language' ? (
           <div className="p-6 space-y-4">
-            <h2 className="text-xl font-extrabold text-stone-800 mb-6">Select Language</h2>
-            {['English', 'हिंदी (Hindi)', 'मराठी (Marathi)', 'தமிழ் (Tamil)', 'ಕನ್ನಡ (Kannada)'].map((lang, i) => (
-              <button key={i} onClick={() => setCurrentScreen('home')} className="w-full bg-white rounded-2xl border border-stone-100 p-5 shadow-sm flex items-center justify-between hover:border-primary-200 transition-colors">
-                <span className="font-bold text-stone-700">{lang}</span>
-                {i === 0 && <div className="w-4 h-4 rounded-full bg-primary-600 border-4 border-primary-100"></div>}
-                {i !== 0 && <div className="w-4 h-4 rounded-full border-2 border-stone-300"></div>}
-              </button>
-            ))}
+            <h2 className="text-xl font-extrabold text-stone-800 mb-6">{t.selectLanguage}</h2>
+            {(['English', 'Hindi', 'Marathi', 'Tamil', 'Kannada'] as Language[]).map((lang, i) => {
+              const langLabels = {
+                English: 'English',
+                Hindi: 'हिंदी (Hindi)',
+                Marathi: 'मराठी (Marathi)',
+                Tamil: 'தமிழ் (Tamil)',
+                Kannada: 'ಕನ್ನಡ (Kannada)'
+              };
+              return (
+                <button 
+                  key={lang} 
+                  onClick={() => {
+                    setSelectedLanguage(lang);
+                    setCurrentScreen('home');
+                  }} 
+                  className={`w-full bg-white rounded-2xl border p-5 shadow-sm flex items-center justify-between transition-colors ${selectedLanguage === lang ? 'border-primary-500 ring-1 ring-primary-500' : 'border-stone-100 hover:border-primary-200'}`}
+                >
+                  <span className={`font-bold ${selectedLanguage === lang ? 'text-primary-700' : 'text-stone-700'}`}>{langLabels[lang]}</span>
+                  {selectedLanguage === lang ? (
+                    <div className="w-5 h-5 rounded-full bg-primary-600 flex items-center justify-center">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                    </div>
+                  ) : (
+                    <div className="w-5 h-5 rounded-full border-2 border-stone-300"></div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         ) : currentScreen === 'profile' ? (
           <div className="p-6 flex flex-col items-center">
             <div className="w-24 h-24 bg-primary-100 rounded-full flex items-center justify-center mb-4 border-4 border-white shadow-lg">
               <User className="w-12 h-12 text-primary-600" />
             </div>
-            <h2 className="text-2xl font-extrabold text-stone-800">AashaLink Worker</h2>
+            <h2 className="text-2xl font-extrabold text-stone-800">Anita Sharma</h2>
             <p className="text-stone-500 font-medium mb-8">vishvcode@gmail.com</p>
+
+            {/* Personal Details Section */}
+            <div className="w-full bg-white rounded-3xl border border-stone-100 p-6 shadow-sm mb-6">
+              <h3 className="text-xs font-black text-stone-400 uppercase tracking-widest mb-4">{t.personalDetails}</h3>
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="p-2 bg-primary-50 rounded-xl text-primary-600"><User className="w-5 h-5" /></div>
+                  <div>
+                    <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">{t.designation}</p>
+                    <p className="font-bold text-stone-800">ANM (Auxiliary Nurse Midwife)</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="p-2 bg-primary-50 rounded-xl text-primary-600"><Activity className="w-5 h-5" /></div>
+                  <div>
+                    <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">{t.ashaId}</p>
+                    <p className="font-bold text-stone-800">ASHA-2024-8892</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="p-2 bg-primary-50 rounded-xl text-primary-600"><MapPin className="w-5 h-5" /></div>
+                  <div>
+                    <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">{t.assignedVillage}</p>
+                    <p className="font-bold text-stone-800">Shirur, Pune District</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="p-2 bg-primary-50 rounded-xl text-primary-600"><Phone className="w-5 h-5" /></div>
+                  <div>
+                    <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">{t.contactNumber}</p>
+                    <p className="font-bold text-stone-800">+91 98765 43210</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="p-2 bg-primary-50 rounded-xl text-primary-600"><Calendar className="w-5 h-5" /></div>
+                  <div>
+                    <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Joining Date</p>
+                    <p className="font-bold text-stone-800">12 Jan 2022</p>
+                  </div>
+                </div>
+              </div>
+            </div>
             
             <div className="w-full space-y-3">
               <button onClick={() => setCurrentScreen('settings')} className="w-full bg-white rounded-2xl border border-stone-100 p-4 shadow-sm flex items-center gap-4 hover:border-primary-200 transition-colors text-left">
                 <Settings className="w-6 h-6 text-stone-400" />
-                <span className="font-bold text-stone-700 flex-1">Settings</span>
+                <span className="font-bold text-stone-700 flex-1">{t.settings}</span>
               </button>
               <button onClick={() => setCurrentScreen('language')} className="w-full bg-white rounded-2xl border border-stone-100 p-4 shadow-sm flex items-center gap-4 hover:border-primary-200 transition-colors text-left">
                 <Globe className="w-6 h-6 text-stone-400" />
-                <span className="font-bold text-stone-700 flex-1">Language</span>
+                <span className="font-bold text-stone-700 flex-1">{t.selectLanguage}</span>
               </button>
               <button onClick={() => setShowHelpDialog(true)} className="w-full bg-white rounded-2xl border border-stone-100 p-4 shadow-sm flex items-center gap-4 hover:border-primary-200 transition-colors text-left">
                 <HelpCircle className="w-6 h-6 text-stone-400" />
-                <span className="font-bold text-stone-700 flex-1">Help & Support</span>
+                <span className="font-bold text-stone-700 flex-1">{t.helpSupport}</span>
               </button>
               <button onClick={() => setShowLogoutConfirm(true)} className="w-full bg-rose-50 rounded-2xl border border-rose-100 p-4 shadow-sm flex items-center gap-4 hover:border-rose-200 transition-colors text-left mt-4">
                 <LogOut className="w-6 h-6 text-rose-500" />
-                <span className="font-bold text-rose-600 flex-1">Logout</span>
+                <span className="font-bold text-rose-600 flex-1">{t.logout}</span>
               </button>
             </div>
           </div>
@@ -1658,10 +1993,10 @@ export default function App() {
       {/* Bottom Navigation */}
       {currentScreen !== 'login' && (
         <nav className="h-20 bg-white border-t border-stone-100 flex items-center justify-around px-4 pb-2 relative z-10 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.05)]">
-          <NavItem icon={Home} label="Home" active={currentScreen === 'home'} onClick={() => setCurrentScreen('home')} />
-          <NavItem icon={ClipboardList} label="Records" active={currentScreen === 'patient-records'} onClick={() => setCurrentScreen('patient-records')} />
-          <NavItem icon={Mic} label="Voice" active={currentScreen === 'voice-diary'} onClick={() => setCurrentScreen('voice-diary')} />
-          <NavItem icon={User} label="Profile" active={currentScreen === 'profile'} onClick={() => setCurrentScreen('profile')} />
+          <NavItem icon={Home} label={t.home} active={currentScreen === 'home'} onClick={() => setCurrentScreen('home')} />
+          <NavItem icon={ClipboardList} label={t.records} active={currentScreen === 'patient-records'} onClick={() => setCurrentScreen('patient-records')} />
+          <NavItem icon={Mic} label={t.voice} active={currentScreen === 'voice-diary'} onClick={() => setCurrentScreen('voice-diary')} />
+          <NavItem icon={User} label={t.profile} active={currentScreen === 'profile'} onClick={() => setCurrentScreen('profile')} />
         </nav>
       )}
 
@@ -1693,7 +2028,7 @@ export default function App() {
                     <User className="w-6 h-6 text-primary-600" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-extrabold text-stone-800">AashaLink</h2>
+                    <h2 className="text-lg font-extrabold text-stone-800">{t.ashaLink}</h2>
                     <p className="text-xs text-stone-500 font-medium">vishvcode@gmail.com</p>
                   </div>
                 </div>
@@ -1704,14 +2039,14 @@ export default function App() {
 
               {/* Drawer Links */}
               <div className="flex-1 overflow-y-auto py-4">
-                <DrawerItem icon={Settings} label="Settings" onClick={() => { setCurrentScreen('settings'); setIsDrawerOpen(false); }} />
-                <DrawerItem icon={Globe} label="Language Switch" onClick={() => { setCurrentScreen('language'); setIsDrawerOpen(false); }} />
-                <DrawerItem icon={HelpCircle} label="Help & Support" onClick={() => { setShowHelpDialog(true); setIsDrawerOpen(false); }} />
+                <DrawerItem icon={Settings} label={t.settings} onClick={() => { setCurrentScreen('settings'); setIsDrawerOpen(false); }} />
+                <DrawerItem icon={Globe} label={t.selectLanguage} onClick={() => { setCurrentScreen('language'); setIsDrawerOpen(false); }} />
+                <DrawerItem icon={HelpCircle} label={t.helpSupport} onClick={() => { setShowHelpDialog(true); setIsDrawerOpen(false); }} />
               </div>
 
               {/* Drawer Footer */}
               <div className="p-4 border-t border-stone-100">
-                <DrawerItem icon={LogOut} label="Logout" isRed onClick={() => { setShowLogoutConfirm(true); setIsDrawerOpen(false); }} />
+                <DrawerItem icon={LogOut} label={t.logout} isRed onClick={() => { setShowLogoutConfirm(true); setIsDrawerOpen(false); }} />
               </div>
             </motion.div>
           </>
@@ -1724,7 +2059,7 @@ export default function App() {
           <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowHelpDialog(false)} className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" />
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-3xl p-6 w-full max-w-sm relative z-10 shadow-2xl">
-              <h2 className="text-xl font-extrabold text-stone-800 mb-4">Help & Support</h2>
+              <h2 className="text-xl font-extrabold text-stone-800 mb-4">{t.helpSupport}</h2>
               <div className="space-y-3 text-stone-600 font-medium">
                 <p>📞 Health Helpline: <span className="font-bold text-stone-800">104</span></p>
                 <p>🚑 Ambulance: <span className="font-bold text-stone-800">108</span></p>
@@ -1748,7 +2083,7 @@ export default function App() {
           <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowLogoutConfirm(false)} className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" />
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-3xl p-6 w-full max-w-sm relative z-10 shadow-2xl">
-              <h2 className="text-xl font-extrabold text-stone-800 mb-2">Logout</h2>
+              <h2 className="text-xl font-extrabold text-stone-800 mb-2">{t.logout}</h2>
               <p className="text-stone-600 font-medium mb-6">Are you sure you want to logout?</p>
               <div className="flex gap-3">
                 <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 bg-stone-100 text-stone-800 font-bold py-3 rounded-xl hover:bg-stone-200 transition-colors">

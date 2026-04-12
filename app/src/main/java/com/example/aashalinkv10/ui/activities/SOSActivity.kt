@@ -13,6 +13,7 @@ import com.example.aashalinkv10.R
 import com.example.aashalinkv10.databinding.ActivitySosBinding
 import com.example.aashalinkv10.utils.EmergencyAlertManager
 import com.google.android.gms.location.LocationServices
+import com.google.gson.Gson
 
 class SOSActivity : BaseActivity() {
 
@@ -105,14 +106,26 @@ class SOSActivity : BaseActivity() {
                 EmergencyAlertManager.sendSOSAlert(this, location) { success, fail ->
                     binding.layoutLoading.visibility = View.GONE
                     Toast.makeText(this, "SOS sent to $success people", Toast.LENGTH_LONG).show()
-                    dial108()
+                    
+                    val contacts = EmergencyAlertManager.getSavedContacts(this).filter { it.isAutoAlert }
+                    val contactsJson = Gson().toJson(contacts)
+                    val intent = Intent(this, SOSVoiceActivity::class.java)
+                    intent.putExtra("contacts_json", contactsJson)
+                    intent.putExtra("sent_count", success)
+                    startActivity(intent)
                 }
             } else {
                 // Handle null location (send without link or use last known)
                 Toast.makeText(this, "Could not get GPS. Sending alert without location.", Toast.LENGTH_SHORT).show()
-                // Logic to send without location...
+                
+                val contacts = EmergencyAlertManager.getSavedContacts(this).filter { it.isAutoAlert }
+                val contactsJson = Gson().toJson(contacts)
+                val intent = Intent(this, SOSVoiceActivity::class.java)
+                intent.putExtra("contacts_json", contactsJson)
+                intent.putExtra("sent_count", 0)
+                startActivity(intent)
+                
                 binding.layoutLoading.visibility = View.GONE
-                dial108()
             }
         }.addOnFailureListener {
             binding.layoutLoading.visibility = View.GONE

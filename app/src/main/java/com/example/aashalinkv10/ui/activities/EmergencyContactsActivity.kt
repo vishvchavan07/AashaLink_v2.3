@@ -63,10 +63,26 @@ class EmergencyContactsActivity : BaseActivity(), AddContactBottomSheet.OnContac
         binding.btnBack.setOnClickListener { finish() }
 
         // Family List
-        familyAdapter = FamilyContactAdapter(familyContacts) { contact ->
-            familyContacts.remove(contact)
-            updateFamilyUI()
-        }
+        familyAdapter = FamilyContactAdapter(
+            familyContacts,
+            onDeleteClick = { contact ->
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Delete Contact")
+                    .setMessage("Are you sure you want to delete ${contact.name}?")
+                    .setPositiveButton("Delete") { _, _ ->
+                        familyContacts.remove(contact)
+                        updateFamilyUI()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            },
+            onItemClick = { contact ->
+                val bottomSheet = AddContactBottomSheet()
+                bottomSheet.setEditingContact(contact)
+                bottomSheet.setOnContactAddedListener(this)
+                bottomSheet.show(supportFragmentManager, AddContactBottomSheet.TAG)
+            }
+        )
         binding.rvFamilyContacts.layoutManager = LinearLayoutManager(this)
         binding.rvFamilyContacts.adapter = familyAdapter
 
@@ -87,14 +103,44 @@ class EmergencyContactsActivity : BaseActivity(), AddContactBottomSheet.OnContac
         binding.spinnerDesignation.adapter = adapter
 
         binding.btnEditSupervisor.setOnClickListener {
-            val isEditing = binding.etSupervisorName.isEnabled
-            toggleSupervisorEdit(!isEditing)
+            toggleSupervisorEdit(true)
+        }
+
+        binding.btnCancelSupervisor.setOnClickListener {
+            supervisorContact?.let { populateSupervisorUI(it) }
+            toggleSupervisorEdit(false)
+        }
+
+        binding.btnSaveSupervisor.setOnClickListener {
+            saveSupervisorDetails()
         }
 
         // Nearby Workers
-        nearbyAdapter = NearbyWorkerAdapter(nearbyWorkers)
+        nearbyAdapter = NearbyWorkerAdapter(
+            nearbyWorkers,
+            { worker ->
+                val bottomSheet = com.example.aashalinkv10.ui.bottomsheets.WorkerDetailBottomSheet()
+                bottomSheet.setWorker(worker)
+                bottomSheet.show(supportFragmentManager, com.example.aashalinkv10.ui.bottomsheets.WorkerDetailBottomSheet.TAG)
+            },
+            { worker, isActive ->
+                updateWorkerStatus(worker.id, isActive)
+            }
+        )
         binding.rvNearbyWorkers.layoutManager = LinearLayoutManager(this)
         binding.rvNearbyWorkers.adapter = nearbyAdapter
+
+        // Sorting for Nearby Workers
+        val sortOptions = arrayOf("Closest First", "Farthest First", "Designation (A-Z)", "Name (A-Z)")
+        val sortAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, sortOptions)
+        sortAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinnerSortNearby.adapter = sortAdapter
+        binding.spinnerSortNearby.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                sortNearbyWorkers(position)
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
 
         binding.btnRefreshNearby.setOnClickListener { detectNearbyAshaWorkers() }
 
@@ -131,26 +177,61 @@ class EmergencyContactsActivity : BaseActivity(), AddContactBottomSheet.OnContac
         binding.etSupervisorName.isEnabled = editable
         binding.spinnerDesignation.isEnabled = editable
         binding.etSupervisorPhone.isEnabled = editable
-        binding.btnEditSupervisor.text = if (editable) getString(R.string.save) else getString(R.string.edit)
         
-        if (!editable) {
-            // Logic to temporarily store supervisor data in memory
-            val name = binding.etSupervisorName.text.toString().trim()
-            val phone = binding.etSupervisorPhone.text.toString().trim()
-            val desig = binding.spinnerDesignation.selectedItem?.toString() ?: ""
+        binding.btnEditSupervisor.visibility = if (editable) View.GONE else View.VISIBLE
+        binding.layoutSupervisorActions.visibility = if (editable) View.VISIBLE else View.GONE
+    }
+
+    private fun saveSupervisorDetails() {
+        val name = binding.etSupervisorName.text.toString().trim()
+        val phone = binding.etSupervisorPhone.text.toString().trim()
+        val desig = binding.spinnerDesignation.selectedItem?.toString() ?: ""
+        
+        if (name.isEmpty()) {
+            binding.etSupervisorName.error = "Name required"
+            return
+        }
+        if (phone.isEmpty() || phone.length < 10) {
+            binding.etSupervisorPhone.error = "Valid phone required"
+            return
+        }
+
+        val formattedPhone = if (phone.startsWith("+91")) phone else "+91$phone"
+        
+        val newSupervisor = EmergencyContact(
+            id = "supervisor_id",
+            name = name,
+            phone = formattedPhone,
+            designation = desig,
+            contactType = "supervisor",
+            distanceKm = -1.0,
+            isAutoAlert = true
+        )
+
+        // Save to Firestore
+        if (uid.isNotEmpty()) {
+            binding.btnSaveSupervisor.isEnabled = false
+            binding.btnSaveSupervisor.text = "Saving..."
             
-            if (name.isNotEmpty() && phone.isNotEmpty()) {
-                supervisorContact = EmergencyContact(
-                    id = "supervisor_id",
-                    name = name,
-                    phone = if (phone.startsWith("+91")) phone else "+91$phone",
-                    designation = desig,
-                    contactType = "supervisor",
-                    distanceKm = -1.0,
-                    isAutoAlert = true
-                )
-                Toast.makeText(this, "Supervisor details updated locally", Toast.LENGTH_SHORT).show()
-            }
+            db.collection("ashaWorkers").document(uid)
+                .collection("emergencyContacts")
+                .document("supervisor_id")
+                .set(newSupervisor)
+                .addOnSuccessListener {
+                    supervisorContact = newSupervisor
+                    Toast.makeText(this, "Supervisor details saved", Toast.LENGTH_SHORT).show()
+                    toggleSupervisorEdit(false)
+                    binding.btnSaveSupervisor.isEnabled = true
+                    binding.btnSaveSupervisor.text = getString(R.string.save)
+                }
+                .addOnFailureListener { e ->
+                    Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    binding.btnSaveSupervisor.isEnabled = true
+                    binding.btnSaveSupervisor.text = getString(R.string.save)
+                }
+        } else {
+            supervisorContact = newSupervisor
+            toggleSupervisorEdit(false)
         }
     }
 
@@ -197,6 +278,26 @@ class EmergencyContactsActivity : BaseActivity(), AddContactBottomSheet.OnContac
         updateFamilyUI()
     }
 
+    override fun onContactUpdated(contact: EmergencyContact) {
+        val index = familyContacts.indexOfFirst { it.id == contact.id }
+        if (index != -1) {
+            familyContacts[index] = contact
+            updateFamilyUI()
+        }
+    }
+
+    private fun sortNearbyWorkers(sortType: Int) {
+        if (nearbyWorkers.isEmpty()) return
+
+        when (sortType) {
+            0 -> nearbyWorkers.sortBy { it.distanceKm } // Closest First
+            1 -> nearbyWorkers.sortByDescending { it.distanceKm } // Farthest First
+            2 -> nearbyWorkers.sortBy { it.designation } // Designation (A-Z)
+            3 -> nearbyWorkers.sortBy { it.name } // Name (A-Z)
+        }
+        nearbyAdapter.notifyDataSetChanged()
+    }
+
     private fun detectNearbyAshaWorkers() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             binding.tvNearbyStatus.visibility = View.VISIBLE
@@ -232,7 +333,6 @@ class EmergencyContactsActivity : BaseActivity(), AddContactBottomSheet.OnContac
 
                 // Query others
                 db.collection("ashaWorkers")
-                    .whereEqualTo("isActive", true)
                     .get()
                     .addOnSuccessListener { result ->
                         nearbyWorkers.clear()
@@ -245,6 +345,8 @@ class EmergencyContactsActivity : BaseActivity(), AddContactBottomSheet.OnContac
                             val phone = doc.getString("phoneNumber") ?: ""
                             val village = doc.getString("village") ?: ""
                             val ashaId = doc.getString("ashaId") ?: ""
+                            val designation = doc.getString("designation") ?: ""
+                            val isActive = doc.getBoolean("isActive") ?: true
 
                             val distance = calculateDistance(myLat, myLng, lat, lng)
                             if (distance <= 5.0) {
@@ -255,14 +357,15 @@ class EmergencyContactsActivity : BaseActivity(), AddContactBottomSheet.OnContac
                                     village = village,
                                     distanceKm = distance,
                                     ashaId = ashaId,
+                                    designation = designation,
                                     contactType = "asha_worker",
                                     latitude = lat,
-                                    longitude = lng
+                                    longitude = lng,
+                                    isActive = isActive
                                 ))
                             }
                         }
-                        nearbyWorkers.sortBy { it.distanceKm }
-                        nearbyAdapter.notifyDataSetChanged()
+                        sortNearbyWorkers(binding.spinnerSortNearby.selectedItemPosition)
                         
                         binding.pbNearby.visibility = View.GONE
                         if (nearbyWorkers.isEmpty()) {
@@ -276,6 +379,17 @@ class EmergencyContactsActivity : BaseActivity(), AddContactBottomSheet.OnContac
                 binding.tvNearbyStatus.text = "Could not get location"
             }
         }
+    }
+
+    private fun updateWorkerStatus(workerId: String, isActive: Boolean) {
+        db.collection("ashaWorkers").document(workerId)
+            .update("isActive", isActive)
+            .addOnSuccessListener {
+                Toast.makeText(this, "Status updated successfully", Toast.LENGTH_SHORT).show()
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Failed to update status: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
     }
 
     private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {

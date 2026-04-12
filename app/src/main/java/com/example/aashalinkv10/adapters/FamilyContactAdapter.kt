@@ -9,7 +9,8 @@ import com.example.aashalinkv10.models.EmergencyContact
 
 class FamilyContactAdapter(
     private val contacts: List<EmergencyContact>,
-    private val onDeleteClick: (EmergencyContact) -> Unit
+    private val onDeleteClick: (EmergencyContact) -> Unit,
+    private val onItemClick: (EmergencyContact) -> Unit
 ) : RecyclerView.Adapter<FamilyContactAdapter.ViewHolder>() {
 
     class ViewHolder(val binding: ItemFamilyContactBinding) : RecyclerView.ViewHolder(binding.root)
@@ -22,6 +23,7 @@ class FamilyContactAdapter(
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val contact = contacts[position]
         holder.binding.apply {
+            root.setOnClickListener { onItemClick(contact) }
             tvName.text = contact.name
             tvRelationPhone.text = "${contact.relation} • ${contact.phone}"
             

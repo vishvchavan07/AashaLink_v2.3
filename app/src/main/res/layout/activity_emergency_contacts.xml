@@ -203,6 +203,36 @@
                         android:padding="12dp"
                         android:textSize="14sp" />
 
+                    <LinearLayout
+                        android:id="@+id/layoutSupervisorActions"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:orientation="horizontal"
+                        android:visibility="gone">
+
+                        <Button
+                            android:id="@+id/btnCancelSupervisor"
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="8dp"
+                            android:layout_weight="1"
+                            android:text="Cancel"
+                            android:textAllCaps="false"
+                            android:textColor="@color/gray"
+                            app:strokeColor="@color/gray" />
+
+                        <Button
+                            android:id="@+id/btnSaveSupervisor"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="@string/save"
+                            android:textAllCaps="false"
+                            app:backgroundTint="@color/blue_primary" />
+                    </LinearLayout>
+
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -252,6 +282,30 @@
                         android:text="@string/auto_detected_subtitle"
                         android:textColor="@color/gray"
                         android:textSize="12sp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Sort by:"
+                            android:textColor="@color/gray_dark"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+
+                        <Spinner
+                            android:id="@+id/spinnerSortNearby"
+                            android:layout_width="0dp"
+                            android:layout_height="32dp"
+                            android:layout_marginStart="8dp"
+                            android:layout_weight="1"
+                            android:background="@drawable/bg_spinner" />
+                    </LinearLayout>
 
                     <ProgressBar
                         android:id="@+id/pbNearby"
