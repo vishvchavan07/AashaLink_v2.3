@@ -1,0 +1,76 @@
+name: aashalink
+description: A comprehensive healthcare connectivity app for ASHA workers.
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.19.0
+
+  # State Management
+  flutter_riverpod: ^2.4.9
+  riverpod_annotation: ^2.3.3
+
+  # Navigation
+  go_router: ^13.1.0
+
+  # Firebase
+  firebase_core: ^2.24.2
+  firebase_auth: ^4.15.3
+  cloud_firestore: ^4.13.6
+
+  # Local Database
+  drift: ^2.14.1
+  sqlite3_flutter_libs: ^0.5.18
+  path_provider: ^2.1.1
+  path: ^1.8.3
+
+  # AI & Connectivity
+  google_generative_ai: ^0.4.0
+  connectivity_plus: ^5.0.2
+  speech_to_text: ^6.6.0
+  flutter_tts: ^3.8.5
+
+  # Audio recording
+  record: ^5.1.2
+
+  # Maps & Location
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.1
+  geolocator: ^10.1.0
+  url_launcher: ^6.2.2
+
+  # Preferences & Utils
+  shared_preferences: ^2.2.2
+  package_info_plus: ^5.0.1
+
+  # Data classes
+  freezed_annotation: ^2.4.1
+  json_annotation: ^4.8.1
+
+  # UI & Icons
+  lucide_icons: ^0.321.0
+  google_fonts: ^6.1.0
+  flutter_animate: ^4.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # Code Generation
+  build_runner: ^2.4.7
+  drift_dev: ^2.14.1
+  riverpod_generator: ^2.3.9
+  freezed: ^2.4.6
+  json_serializable: ^6.7.1
+  custom_lint: ^0.5.7
+  riverpod_lint: ^2.3.7
+
+flutter:
+  uses-material-design: true
+  generate: true

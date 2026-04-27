@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Mic, 
   FileText, 
@@ -37,12 +37,22 @@ import {
   CheckCircle2,
   AlertCircle,
   ShieldAlert,
-  Navigation
+  Navigation,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import rawData from './data/raw_datasets.json';
+import { db, auth, addCollectionData, getCollectionData } from './firebase';
+import { collection, addDoc, onSnapshot } from 'firebase/firestore';
+import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import localforage from 'localforage';
+import { analyzeEntities } from './utils/googleNlp';
+import { translateTextGoogleCloudV3 } from './utils/googleTranslate';
 
 // Fix for default marker icon in react-leaflet
 // @ts-ignore
@@ -62,6 +72,13 @@ L.Marker.prototype.options.icon = DefaultIcon;
 type NetworkStatus = 'Good' | 'Poor' | 'No network';
 type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'offline';
 type Language = 'English' | 'Hindi' | 'Marathi' | 'Tamil' | 'Kannada';
+const langCodeMap: Record<Language, string> = {
+  English: 'en-IN',
+  Hindi: 'hi-IN',
+  Marathi: 'mr-IN',
+  Tamil: 'ta-IN',
+  Kannada: 'kn-IN'
+};
 type Screen = 'home' | 'patient-records' | 'blood-bank' | 'med-assistant' | 'bed-availability' | 'voice-diary' | 'settings' | 'language' | 'login' | 'profile';
 type Patient = { 
   name: string; 
@@ -74,9 +91,18 @@ type Patient = {
   contact: string;
   emergencyContact: string;
   address: string;
+  photo?: string;
 };
 type BloodBank = { name: string; address: string; phone: string; lat: number; lng: number; groups: string[]; lowStockGroups?: string[]; distance: number };
-type VoiceDiaryEntry = { id: string; patientName: string; date: string; duration: string; transcript: string };
+type VoiceDiaryEntry = { id: string; patientName: string; date: string; duration: string; transcript: string; translatedTranscript?: string };
+
+type AshaWorker = {
+  name: string;
+  ashaId: string;
+  village: string;
+  designation: string;
+  contactNumber: string;
+};
 
 type MedicalRecord = {
   id: number;
@@ -89,7 +115,70 @@ type MedicalRecord = {
   duration_warning: string;
 };
 
-const translations: Record<Language, any> = {
+// --- Translation Context ---
+const TranslationContext = React.createContext<{
+  selectedLanguage: Language;
+  setSelectedLanguage: (l: Language) => void;
+  t: (key: string, original?: string) => string;
+  dynamicTranslations: Record<string, Record<string, string>>;
+  setDynamicTranslations: React.Dispatch<React.SetStateAction<Record<string, Record<string, string>>>>;
+} | null>(null);
+
+const T = ({ children, k }: { children: string, k?: string }) => {
+  const context = React.useContext(TranslationContext);
+  if (!context) return <>{children}</>;
+  const { selectedLanguage, dynamicTranslations, setDynamicTranslations } = context;
+
+  const [translated, setTranslated] = useState<string>(() => {
+    if (selectedLanguage === 'English') return children;
+    if (k && translations[selectedLanguage]?.[k]) return translations[selectedLanguage][k];
+    return dynamicTranslations[children]?.[selectedLanguage] || children;
+  });
+
+  useEffect(() => {
+    if (selectedLanguage === 'English') {
+      setTranslated(children);
+      return;
+    }
+
+    if (k && translations[selectedLanguage]?.[k]) {
+      setTranslated(translations[selectedLanguage][k]);
+      return;
+    }
+
+    if (dynamicTranslations[children]?.[selectedLanguage]) {
+      setTranslated(dynamicTranslations[children][selectedLanguage]);
+      return;
+    }
+
+    const performTranslation = async () => {
+      const apiKey = import.meta.env.VITE_GOOGLE_SPEECH_API_KEY || import.meta.env.VITE_GOOGLE_TRANSLATE_API_KEY;
+      const projectId = import.meta.env.VITE_GOOGLE_PROJECT_ID;
+      if (!apiKey || !projectId) return;
+
+      try {
+        const result = await translateTextGoogleCloudV3(
+          children, 
+          langCodeMap[selectedLanguage].split('-')[0], 
+          projectId, 
+          apiKey
+        );
+        
+        setDynamicTranslations(prev => ({
+          ...prev,
+          [children]: { ...(prev[children] || {}), [selectedLanguage]: result }
+        }));
+        setTranslated(result);
+      } catch (e) {
+        console.error("Auto-translation error:", e);
+      }
+    };
+
+    performTranslation();
+  }, [children, selectedLanguage, k, dynamicTranslations, setDynamicTranslations]);
+
+  return <>{translated}</>;
+};
   English: {
     home: "Home",
     records: "Records",
@@ -251,11 +340,11 @@ const NetworkIndicator = ({ status, syncStatus, onToggle }: { status: NetworkSta
 
   const getSyncText = () => {
     switch (syncStatus) {
-      case 'syncing': return 'Syncing...';
-      case 'synced': return 'All data synced';
-      case 'error': return 'Sync failed';
-      case 'offline': return 'Offline mode';
-      default: return 'Cloud ready';
+      case 'syncing': return <T k="syncing">Syncing...</T>;
+      case 'synced': return <T k="synced">All data synced</T>;
+      case 'error': return <T k="error">Sync failed</T>;
+      case 'offline': return <T k="offline">Offline mode</T>;
+      default: return <T k="cloudReady">Cloud ready</T>;
     }
   };
 
@@ -285,44 +374,35 @@ const FeatureCard = ({ icon: Icon, label, onClick }: { icon: any; label: string;
     <div className="p-4 bg-primary-50 rounded-2xl group-hover:bg-primary-100 transition-colors">
       <Icon className="w-8 h-8 text-primary-600" />
     </div>
-    <span className="text-sm font-bold text-stone-700">{label}</span>
+    <span className="text-sm font-bold text-stone-700"><T>{label}</T></span>
   </motion.button>
 );
 
 const NavItem = ({ icon: Icon, label, active = false, onClick }: { icon: any; label: string; active?: boolean; onClick?: () => void }) => (
   <button onClick={onClick} className={`flex flex-col items-center gap-1.5 ${active ? 'text-primary-600' : 'text-stone-400 hover:text-stone-600'} transition-colors`}>
     <Icon className={`w-6 h-6 ${active ? 'stroke-[2.5px]' : 'stroke-2'}`} />
-    <span className="text-[10px] font-bold uppercase tracking-widest">{label}</span>
+    <span className="text-[10px] font-bold uppercase tracking-widest"><T>{label}</T></span>
   </button>
 );
 
 const DrawerItem = ({ icon: Icon, label, isRed = false, onClick }: { icon: any; label: string; isRed?: boolean; onClick?: () => void }) => (
   <button onClick={onClick} className={`w-full flex items-center gap-4 px-6 py-4 hover:bg-stone-50 transition-colors ${isRed ? 'text-rose-600' : 'text-stone-700'}`}>
     <Icon className="w-6 h-6" />
-    <span className="font-semibold">{label}</span>
+    <span className="font-semibold"><T>{label}</T></span>
   </button>
 );
 
+import { transcribeAudioGoogleCloudV2 } from './utils/googleSpeech';
+
 const HighlightText = ({ text, query }: { text: string, query: string }) => {
   if (!query.trim()) return <>{text}</>;
-  
   const terms = query.toLowerCase().trim().split(/\s+/).filter(t => t.length > 0);
   if (terms.length === 0) return <>{text}</>;
-  
   const regex = new RegExp(`(${terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
   const parts = text.split(regex);
-  
   return (
     <>
-      {parts.map((part, i) => 
-        regex.test(part) ? (
-          <mark key={i} className="bg-primary-100 text-primary-900 rounded-sm px-0.5 font-bold">
-            {part}
-          </mark>
-        ) : (
-          part
-        )
-      )}
+      {parts.map((part, i) => regex.test(part) ? <mark key={i} className="bg-primary-100 text-primary-900 rounded-sm px-0.5 font-bold">{part}</mark> : part)}
     </>
   );
 };
@@ -333,45 +413,124 @@ export default function App() {
   const [network, setNetwork] = useState<NetworkStatus>('Good');
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [currentScreen, setCurrentScreen] = useState<Screen>('home');
-  const [selectedLanguage, setSelectedLanguage] = useState<Language>('English');
+  const [authUser, setAuthUser] = useState<AshaWorker | null>(() => {
+    try {
+      const saved = localStorage.getItem('aashalink_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  const [selectedLanguage, setSelectedLanguage] = useState<Language>(() => {
+    try {
+      const saved = localStorage.getItem('aashalink_language');
+      return (saved as Language) || 'English';
+    } catch (e) {
+      return 'English';
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('aashalink_language', selectedLanguage);
+  }, [selectedLanguage]);
+
+  const [dynamicTranslations, setDynamicTranslations] = useState<Record<string, Record<string, string>>>(() => {
+    try {
+      const saved = localStorage.getItem('aashalink_dynamic_translations');
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('aashalink_dynamic_translations', JSON.stringify(dynamicTranslations));
+  }, [dynamicTranslations]);
+
+  const t_func = (key: string, original?: string) => {
+    const textToTranslate = original || key;
+    if (selectedLanguage === 'English') return textToTranslate;
+    if (translations[selectedLanguage]?.[key]) return translations[selectedLanguage][key];
+    if (dynamicTranslations[textToTranslate]?.[selectedLanguage]) return dynamicTranslations[textToTranslate][selectedLanguage];
+    return textToTranslate;
+  };
+
+  const contextValue = {
+    selectedLanguage,
+    setSelectedLanguage,
+    t: t_func,
+    dynamicTranslations,
+    setDynamicTranslations
+  };
+
+  const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
+    try {
+      return localStorage.getItem('aashalink_user') ? 'home' : 'login';
+    } catch (e) {
+      return 'login';
+    }
+  });
+
   const [showHelpDialog, setShowHelpDialog] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showDeleteDiaryConfirm, setShowDeleteDiaryConfirm] = useState(false);
   const [isSosActive, setIsSosActive] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 
-  const t = translations[selectedLanguage];
+  // --- Voice Diary State ---
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [transcript, setTranscript] = useState('');
+  
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const medRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const medAudioChunksRef = useRef<Blob[]>([]);
 
-  const emergencyServices = [
-    { name: 'City Hospital (Emergency)', type: 'Hospital', lat: 34.0522, lng: -118.2437, phone: '108' },
-    { name: 'Central Police Station', type: 'Police', lat: 34.0550, lng: -118.2450, phone: '100' },
-    { name: 'Fire Station 10', type: 'Fire', lat: 34.0500, lng: -118.2400, phone: '101' },
-  ];
-
-  // --- Network Detection Logic ---
-  const syncOfflineDataToFirebase = () => {
-    const pending = localStorage.getItem('aashalink_pending_sync');
-    if (!pending || pending === '[]') {
-      setSyncStatus('synced');
-      setTimeout(() => setSyncStatus('idle'), 3000);
-      return;
+  const [voiceDiaries, setVoiceDiaries] = useState<VoiceDiaryEntry[]>(() => {
+    try {
+      const saved = localStorage.getItem('aashalink_diaries');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
     }
+  });
 
-    setSyncStatus('syncing');
-    console.log("Syncing offline data to Firebase...");
-    
-    // Simulate sync delay
-    setTimeout(() => {
-      try {
-        localStorage.setItem('aashalink_pending_sync', '[]');
-        setSyncStatus('synced');
-        // Reset to idle after a few seconds
-        setTimeout(() => setSyncStatus('idle'), 5000);
-      } catch (e) {
-        setSyncStatus('error');
-      }
-    }, 2000);
+  const [diarySearchQuery, setDiarySearchQuery] = useState('');
+  const [diaryDateFilter, setDiaryDateFilter] = useState('');
+  const [diarySortBy, setDiarySortBy] = useState<'date-newest' | 'date-oldest' | 'name-az' | 'name-za'>('date-newest');
+
+  // --- Login State ---
+  const [loginStep, setLoginStep] = useState<'phone' | 'otp' | 'profile'>('phone');
+  const [phoneNumber, setPhoneNumber] = useState('+91');
+  const [otp, setOtp] = useState('');
+  const [confirmationResult, setConfirmationResult] = useState<any>(null);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
+  const [workerProfile, setWorkerProfile] = useState<AshaWorker>({
+    name: '', ashaId: '', village: '', designation: 'ASHA Worker', contactNumber: ''
+  });
+
+  useEffect(() => {
+    if (!authUser && currentScreen !== 'login') {
+      setCurrentScreen('login');
+    }
+  }, [authUser, currentScreen]);
+
+  // --- Patient Records State ---
+  const [activePatient, setActivePatient] = useState<Patient | null>(null);
+  const [patients, setPatients] = useState<Patient[]>(() => {
+    try {
+      const saved = localStorage.getItem('aashalink_patients');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+');
+    }
   };
 
   useEffect(() => {
@@ -432,14 +591,33 @@ export default function App() {
   // --- Patient Records State ---
   const [activePatient, setActivePatient] = useState<Patient | null>(null);
   const [patients, setPatients] = useState<Patient[]>(() => {
-    const saved = localStorage.getItem('aashalink_patients');
-    if (saved) return JSON.parse(saved);
-    return [
-      { name: 'John Doe', age: '45', disease: 'Diabetes', loc: 'Ward A', date: '2023-10-01', bloodGroup: 'A+', dob: '1978-05-12', contact: '9876543210', emergencyContact: '9876543211', address: '123 Main St, Springfield' },
-      { name: 'Jane Smith', age: '32', disease: 'Hypertension', loc: 'Ward B', date: '2023-10-05', bloodGroup: 'O-', dob: '1991-08-24', contact: '9876543212', emergencyContact: '9876543213', address: '456 Oak Ave, Metropolis' },
-      { name: 'Robert Wilson', age: '58', disease: 'Post-Op', loc: 'ICU-2', date: '2023-10-15', bloodGroup: 'B+', dob: '1965-11-30', contact: '9876543214', emergencyContact: '9876543215', address: '789 Pine Rd, Gotham' },
-    ];
+    try {
+      const saved = localStorage.getItem('aashalink_patients');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Error parsing patients from localStorage", e);
+    }
+    return [];
   });
+
+  // Listen to Firebase updates for patients if online
+  useEffect(() => {
+    if ((network === 'Good' || network === 'Poor') && Object.keys(db).length !== 0) {
+      try {
+        const unsubscribe = onSnapshot(collection(db, 'patients'), (snapshot) => {
+          const fetchedPatients = snapshot.docs.map(doc => doc.data() as Patient);
+          if (fetchedPatients.length > 0) {
+            setPatients(fetchedPatients);
+          }
+        }, (error) => {
+          console.error("Error listening to patients in Firebase:", error);
+        });
+        return () => unsubscribe();
+      } catch (e) {
+        console.warn("Firebase not configured properly, skipping live updates.");
+      }
+    }
+  }, [network]);
   const [searchQuery, setSearchQuery] = useState('');
   const [patientDateFilter, setPatientDateFilter] = useState('');
   const [patientBloodGroupFilter, setPatientBloodGroupFilter] = useState('');
@@ -474,9 +652,10 @@ export default function App() {
     return matchesSearch && matchesDate && matchesBloodGroup;
   });
 
-  const handleAddPatient = () => {
+  const handleAddPatient = async () => {
     if (!newPatient.name || !newPatient.age || !newPatient.loc || !newPatient.disease) return;
-    setPatients([...patients, newPatient]);
+    setPatients(prev => [...prev, newPatient]);
+    const patientDataToSave = { ...newPatient };
     setNewPatient({ 
       name: '', 
       age: '', 
@@ -493,11 +672,18 @@ export default function App() {
 
     if (network === 'No network') {
       const pending = JSON.parse(localStorage.getItem('aashalink_pending_sync') || '[]');
-      pending.push({ type: 'ADD_PATIENT', data: newPatient });
+      pending.push({ type: 'ADD_PATIENT', data: patientDataToSave });
       localStorage.setItem('aashalink_pending_sync', JSON.stringify(pending));
     } else {
       // Sync immediately
-      // TODO: Firebase call
+      try {
+        setSyncStatus('syncing');
+        await addCollectionData('patients', patientDataToSave);
+        setSyncStatus('synced');
+        setTimeout(() => setSyncStatus('idle'), 3000);
+      } catch (err) {
+        setSyncStatus('error');
+      }
     }
   };
 
@@ -507,13 +693,24 @@ export default function App() {
   const [maxDistance, setMaxDistance] = useState<number>(50); // Default 50km
   const [bbViewMode, setBbViewMode] = useState<'list' | 'map'>('list');
 
-  const bloodBanksData: BloodBank[] = [
-    { name: 'City Central Blood Bank', address: '123 Health Ave, Downtown', phone: '9876543210', lat: 34.05, lng: -118.24, groups: ['A+', 'A-', 'O+', 'O-'], lowStockGroups: ['A-', 'O-'], distance: 5 },
-    { name: 'Red Cross Rural Center', address: '45 Village Road, Outskirts', phone: '9876543211', lat: 34.06, lng: -118.25, groups: ['B+', 'B-', 'AB+', 'O+'], lowStockGroups: ['B-', 'AB+'], distance: 15 },
-    { name: 'LifeLine Hospital', address: '789 Medical Blvd', phone: '9876543212', lat: 34.07, lng: -118.26, groups: ['A+', 'B+', 'AB+', 'AB-', 'O+'], lowStockGroups: ['AB-'], distance: 8 },
-    { name: 'Hope Donation Camp', address: 'Community Hall, Sector 4', phone: '9876543213', lat: 34.08, lng: -118.27, groups: ['A-', 'B-', 'O-'], lowStockGroups: ['A-', 'B-', 'O-'], distance: 25 },
-    { name: 'Metro Care Blood Bank', address: 'Station Road, East Wing', phone: '9876543214', lat: 34.09, lng: -118.28, groups: ['A+', 'AB+', 'O+', 'O-'], lowStockGroups: ['O-'], distance: 12 },
-  ];
+  const bloodBanksData: BloodBank[] = React.useMemo(() => {
+    if (!rawData.pmc_infrastructure || rawData.pmc_infrastructure.length === 0) return [];
+    return rawData.pmc_infrastructure.map((facility: any, index: number) => {
+      const allGroups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+      const groups = allGroups.filter((_, i) => (index + i) % 3 !== 0);
+      const lowStockGroups = groups.filter((_, i) => (index + i) % 5 === 0);
+      return {
+        name: facility['Facility Name'] || `PMC Facility ${index}`,
+        address: `${facility['Ward Name'] || ''}, ${facility['City Name'] || 'Pune'}`,
+        phone: '104',
+        lat: 18.5204 + (Math.random() - 0.5) * 0.1, // Approximate Pune coords with random offset
+        lng: 73.8567 + (Math.random() - 0.5) * 0.1,
+        groups,
+        lowStockGroups,
+        distance: Math.floor(Math.random() * 20) + 1
+      };
+    });
+  }, []);
 
   const filteredBloodBanks = bloodBanksData.filter(bb => {
     if (selectedBloodGroup) {
@@ -539,18 +736,46 @@ export default function App() {
     return acc;
   }, [] as { name: string; groups: string[] }[]);
 
-  // --- Voice Diary State ---
-  const [isRecording, setIsRecording] = useState(false);
-  const [transcript, setTranscript] = useState('');
-  const [recordingTime, setRecordingTime] = useState(0);
-  const [recognition, setRecognition] = useState<any>(null);
-  const [voiceDiaries, setVoiceDiaries] = useState<VoiceDiaryEntry[]>([
-    { id: '1', patientName: 'Ramesh Kumar', date: '2026-04-10', duration: '01:24', transcript: 'Patient is showing signs of improvement. Fever has subsided.' },
-    { id: '2', patientName: 'Sita Devi', date: '2026-04-09', duration: '00:45', transcript: 'Complaining of mild headaches in the morning. Advised to drink more water.' }
-  ]);
-  const [diarySearchQuery, setDiarySearchQuery] = useState('');
-  const [diaryDateFilter, setDiaryDateFilter] = useState('');
-  const [diarySortBy, setDiarySortBy] = useState<'date-newest' | 'date-oldest' | 'name-az' | 'name-za'>('date-newest');
+  // Load from localForage on mount
+  useEffect(() => {
+    localforage.getItem<Patient[]>('aashalink_patients_db').then(saved => {
+      if (saved && saved.length > 0) setPatients(saved);
+    });
+    localforage.getItem<VoiceDiaryEntry[]>('aashalink_diaries_db').then(saved => {
+      if (saved && saved.length > 0) setVoiceDiaries(saved);
+    });
+  }, []);
+
+  // Sync to localForage on change
+  useEffect(() => {
+    localforage.setItem('aashalink_patients_db', patients);
+    localStorage.setItem('aashalink_patients', JSON.stringify(patients));
+  }, [patients]);
+
+  useEffect(() => {
+    localforage.setItem('aashalink_diaries_db', voiceDiaries);
+    localStorage.setItem('aashalink_diaries', JSON.stringify(voiceDiaries));
+  }, [voiceDiaries]);
+
+  // Listen to Firebase updates for diaries if online
+  useEffect(() => {
+    if ((network === 'Good' || network === 'Poor') && Object.keys(db).length !== 0) {
+      try {
+        const unsubscribe = onSnapshot(collection(db, 'voiceDiaries'), (snapshot) => {
+          const fetchedDiaries = snapshot.docs.map(doc => doc.data() as VoiceDiaryEntry);
+          if (fetchedDiaries.length > 0) {
+            setVoiceDiaries(fetchedDiaries);
+          }
+        }, (error) => {
+          console.error("Error listening to voiceDiaries in Firebase:", error);
+        });
+        return () => unsubscribe();
+      } catch (e) {
+        console.warn("Firebase not configured properly, skipping live updates.");
+      }
+    }
+  }, [network]);
+
   const [diaryTab, setDiaryTab] = useState<'record' | 'list'>('record');
   const [isPlaying, setIsPlaying] = useState<string | null>(null);
   const [diaryToDelete, setDiaryToDelete] = useState<VoiceDiaryEntry | null>(null);
@@ -575,44 +800,56 @@ export default function App() {
       });
   }, [voiceDiaries, diarySearchQuery, diaryDateFilter, diarySortBy]);
 
-  useEffect(() => {
-    if ('webkitSpeechRecognition' in window) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition;
-      const rec = new SpeechRecognition();
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.lang = 'en-IN';
+  const toggleMedRecording = async () => {
+    if (isMedRecording) {
+      if (medRecorderRef.current && medRecorderRef.current.state === 'recording') {
+        medRecorderRef.current.stop();
+        medRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      }
+      setIsMedRecording(false);
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream);
+        medRecorderRef.current = mediaRecorder;
+        medAudioChunksRef.current = [];
 
-      rec.onresult = (event: any) => {
-        let finalTranscript = '';
-        let interimTranscript = '';
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) medAudioChunksRef.current.push(event.data);
+        };
 
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
-          } else {
-            interimTranscript += event.results[i][0].transcript;
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(medAudioChunksRef.current, { type: 'audio/webm' });
+          const apiKey = import.meta.env.VITE_GOOGLE_SPEECH_API_KEY;
+          const projectId = import.meta.env.VITE_GOOGLE_PROJECT_ID;
+          
+          if (!apiKey || !projectId) {
+            alert('Google Cloud API Key or Project ID is missing in .env');
+            return;
           }
-        }
 
-        setTranscript(prev => {
-          const newText = prev + (prev && finalTranscript ? ' ' : '') + finalTranscript;
-          return newText;
-        });
-      };
+          setIsTranscribing(true);
+          try {
+            const result = await transcribeAudioGoogleCloudV2(audioBlob, langCodeMap[selectedLanguage] || 'en-IN', projectId, apiKey);
+            if (result) {
+              setMedInput(prev => ({...prev, symptoms: prev.symptoms + (prev.symptoms ? ' ' : '') + result.trim()}));
+            }
+          } catch (error) {
+            console.error('Speech-to-Text Error:', error);
+            alert('Speech recognition failed. Ensure you have network connectivity and valid API keys.');
+          } finally {
+            setIsTranscribing(false);
+          }
+        };
 
-      rec.onerror = (event: any) => {
-        console.error('Speech recognition error', event.error);
-        setIsRecording(false);
-      };
-
-      rec.onend = () => {
-        setIsRecording(false);
-      };
-
-      setRecognition(rec);
+        mediaRecorder.start();
+        setIsMedRecording(true);
+      } catch (err) {
+        console.error("Microphone access denied or error:", err);
+        alert("Could not access microphone.");
+      }
     }
-  }, []);
+  };
 
   useEffect(() => {
     let interval: any;
@@ -626,15 +863,56 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isRecording]);
 
-  const toggleRecording = () => {
+  const toggleRecording = async () => {
     if (isRecording) {
-      recognition?.stop();
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      }
       setIsRecording(false);
     } else {
       setTranscript('');
       setRecordingTime(0);
-      recognition?.start();
-      setIsRecording(true);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunksRef.current = [];
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) audioChunksRef.current.push(event.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          const apiKey = import.meta.env.VITE_GOOGLE_SPEECH_API_KEY;
+          const projectId = import.meta.env.VITE_GOOGLE_PROJECT_ID;
+
+          if (!apiKey || !projectId) {
+            alert('Google Cloud API Key or Project ID is missing in .env');
+            return;
+          }
+
+          setIsTranscribing(true);
+          try {
+            const result = await transcribeAudioGoogleCloudV2(audioBlob, langCodeMap[selectedLanguage] || 'en-IN', projectId, apiKey);
+            if (result) {
+              setTranscript(prev => prev + (prev ? ' ' : '') + result.trim());
+            }
+          } catch (error) {
+            console.error('Speech-to-Text Error:', error);
+            alert('Speech recognition failed. Ensure you have network connectivity and valid API keys.');
+          } finally {
+            setIsTranscribing(false);
+          }
+        };
+
+        mediaRecorder.start();
+        setIsRecording(true);
+      } catch (err) {
+        console.error("Microphone access denied or error:", err);
+        alert("Could not access microphone.");
+      }
     }
   };
 
@@ -644,7 +922,7 @@ export default function App() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleSaveDiary = () => {
+  const handleSaveDiary = async () => {
     if (!transcript.trim()) return;
     const newEntry: VoiceDiaryEntry = {
       id: Date.now().toString(),
@@ -653,10 +931,25 @@ export default function App() {
       duration: formatTime(recordingTime),
       transcript: transcript
     };
-    setVoiceDiaries([newEntry, ...voiceDiaries]);
+    setVoiceDiaries(prev => [newEntry, ...prev]);
     setTranscript('');
     setRecordingTime(0);
     setDiaryTab('list');
+
+    if (network === 'No network') {
+      const pending = JSON.parse(localStorage.getItem('aashalink_pending_sync') || '[]');
+      pending.push({ type: 'ADD_DIARY', data: newEntry });
+      localStorage.setItem('aashalink_pending_sync', JSON.stringify(pending));
+    } else {
+      try {
+        setSyncStatus('syncing');
+        await addCollectionData('voiceDiaries', newEntry);
+        setSyncStatus('synced');
+        setTimeout(() => setSyncStatus('idle'), 3000);
+      } catch (err) {
+        setSyncStatus('error');
+      }
+    }
   };
 
   const playDiary = (id: string, text: string) => {
@@ -678,6 +971,7 @@ export default function App() {
 
   // --- Med Assistant State ---
   const [medInput, setMedInput] = useState({ name: '', disease: '', symptoms: '', time: '', existing: '' });
+  const [isMedRecording, setIsMedRecording] = useState(false);
   const [medStatus, setMedStatus] = useState<'idle' | 'loading' | 'error' | 'success'>('idle');
   const [medResult, setMedResult] = useState<MedicalRecord | null>(null);
 
@@ -719,154 +1013,22 @@ export default function App() {
     setMedInput({ name: '', disease: '', symptoms: '', time: '', existing: '' });
   };
 
-  const medicalDataset: MedicalRecord[] = [
-    {
-      "id": 1,
-      "disease": "Malaria",
-      "keywords": ["fever","chills","headache","sweating","shivering"],
-      "medicines": "Chloroquine 500mg - twice daily - 3 days\nParacetamol 500mg - for fever",
-      "precautions": "Use mosquito net\nAvoid standing water nearby\nComplete full course of medicine",
-      "red_flags": "Refer to doctor if: unconscious, seizures, very high fever >104F, vomiting medicine",
-      "remedies": "Tulsi + ginger tea\nCold compress on forehead",
-      "duration_warning": "If no improvement in 2 days, refer to PHC"
-    },
-    {
-      "id": 2,
-      "disease": "Typhoid",
-      "keywords": ["fever","stomach pain","weakness","loss of appetite","constipation","diarrhea"],
-      "medicines": "Azithromycin 500mg - once daily - 7 days\nORS for hydration",
-      "precautions": "Boil drinking water\nEat only soft cooked food\nComplete antibiotic course",
-      "red_flags": "Refer if: bleeding, severe stomach pain, unconscious, rash appears",
-      "remedies": "Banana + curd\nCoconut water\nLight khichdi",
-      "duration_warning": "If fever continues beyond 5 days, refer immediately"
-    },
-    {
-      "id": 3,
-      "disease": "Common Cold & Flu",
-      "keywords": ["cough","cold","runny nose","sneezing","sore throat","body ache"],
-      "medicines": "Cetrizine 10mg - at night\nParacetamol 500mg - if fever\nVitamin C tablet - daily",
-      "precautions": "Rest at home\nDrink warm fluids\nCover mouth while coughing",
-      "red_flags": "Refer if: breathing difficulty, chest pain, fever >103F for 3+ days",
-      "remedies": "Steam inhalation twice daily\nHoney + ginger + tulsi decoction",
-      "duration_warning": "Normal cold resolves in 5-7 days"
-    },
-    {
-      "id": 4,
-      "disease": "Gastritis / Acidity",
-      "keywords": ["stomach","pain","burning","acidity","nausea","vomiting","gas","bloating"],
-      "medicines": "Omeprazole 20mg - before breakfast\nAntacid syrup - after meals\nDomperidone - if vomiting",
-      "precautions": "Avoid spicy oily food\nEat small meals frequently\nDo not skip meals",
-      "red_flags": "Refer if: blood in vomit, severe pain, black stool",
-      "remedies": "Cold milk\nCoconut water\nBanana",
-      "duration_warning": "If pain is severe or persistent, refer to doctor"
-    },
-    {
-      "id": 5,
-      "disease": "Diarrhea / Dehydration",
-      "keywords": ["diarrhea","loose motion","dehydration","weakness","watery stool","frequent toilet"],
-      "medicines": "ORS - after every loose motion\nZinc 20mg - daily 14 days (children)\nLoperamide - adults only",
-      "precautions": "Drink boiled water only\nWash hands with soap\nAvoid outside food",
-      "red_flags": "Refer if: blood in stool, >10 motions/day, child not drinking, sunken eyes",
-      "remedies": "Homemade ORS: 1L water + 6 tsp sugar + 1 tsp salt\nCurd rice",
-      "duration_warning": "If not improving in 2 days, refer to PHC"
-    },
-    {
-      "id": 6,
-      "disease": "Anemia",
-      "keywords": ["weakness","fatigue","pale","dizziness","breathless","tired","pale skin","pale eyes"],
-      "medicines": "Iron + Folic Acid tablet - daily after food\nVitamin C tablet - helps iron absorption",
-      "precautions": "Eat iron-rich foods: spinach, jaggery, dates\nDo not take iron with tea/coffee",
-      "red_flags": "Refer if: pregnant woman with severe anemia, Hb <7, fainting, chest pain",
-      "remedies": "Jaggery + sesame seeds\nSpinach soup\nPomegranate juice",
-      "duration_warning": "Iron tablets need 3 months for full effect"
-    },
-    {
-      "id": 7,
-      "disease": "Hypertension (High BP)",
-      "keywords": ["high bp","blood pressure","headache","dizziness","chest","blurred vision","hypertension"],
-      "medicines": "Continue prescribed BP medicine (do not stop)\nAmlodipine if newly diagnosed - refer for prescription",
-      "precautions": "Reduce salt intake\nNo smoking/alcohol\nDaily 30 min walk\nCheck BP regularly",
-      "red_flags": "Refer IMMEDIATELY if: BP >180/110, chest pain, vision loss, slurred speech",
-      "remedies": "Garlic in morning\nCoconut water\nReduce stress",
-      "duration_warning": "BP medicine must not be stopped without doctor advice"
-    },
-    {
-      "id": 8,
-      "disease": "Diabetes (High Blood Sugar)",
-      "keywords": ["diabetes","sugar","thirst","frequent urination","slow healing","weight loss","glucose"],
-      "medicines": "Continue prescribed diabetes medicine\nMetformin if newly suspected - refer for diagnosis",
-      "precautions": "Avoid sugar, rice, maida\nCheck blood sugar regularly\nTake medicine on time",
-      "red_flags": "Refer if: unconscious, blood sugar >300, wound not healing, numbness in feet",
-      "remedies": "Bitter gourd juice (karela)\nFenugreek seeds water\nWalking daily",
-      "duration_warning": "Diabetes needs lifelong management - refer to CHC"
-    },
-    {
-      "id": 9,
-      "disease": "Skin Allergy / Rash",
-      "keywords": ["rash","itching","allergy","skin","hives","red skin","swelling","eczema"],
-      "medicines": "Cetrizine 10mg - at night\nCalamine lotion - apply on rash\nHydrocortisone cream - mild cases",
-      "precautions": "Identify and avoid allergen\nDo not scratch\nWear loose cotton clothes",
-      "red_flags": "Refer if: swelling of face/throat, breathing difficulty, spreading rapidly",
-      "remedies": "Aloe vera gel on affected area\nCold compress\nNeem water bath",
-      "duration_warning": "If rash spreads or worsens in 2 days, refer"
-    },
-    {
-      "id": 10,
-      "disease": "Respiratory Infection / Pneumonia",
-      "keywords": ["breathing","chest","cough","breathless","pneumonia","wheeze","respiratory","difficulty breathing"],
-      "medicines": "Amoxicillin 500mg - 3 times daily - 5 days\nSalbutamol inhaler if wheezing\nParacetamol for fever",
-      "precautions": "Complete antibiotic course\nNo smoking near patient\nKeep warm",
-      "red_flags": "Refer IMMEDIATELY if: fast breathing, chest indrawing, blue lips, child not eating",
-      "remedies": "Steam inhalation\nTulsi + honey + ginger tea\nWarm water gargles",
-      "duration_warning": "If no improvement in 48 hours, refer to hospital"
-    },
-    {
-      "id": 11,
-      "disease": "Conjunctivitis (Eye Infection)",
-      "keywords": ["eye","red eye","itching eye","watery eye","eye discharge","conjunctivitis","pink eye"],
-      "medicines": "Chloramphenicol eye drops - 4 times daily\nTobramycin eye drops - alternative",
-      "precautions": "Do not touch or rub eyes\nSeparate towel and pillow\nWash hands frequently",
-      "red_flags": "Refer if: vision blurred, severe pain, no improvement in 3 days",
-      "remedies": "Clean with clean cotton dipped in boiled water\nRose water drops",
-      "duration_warning": "Usually resolves in 5-7 days with drops"
-    },
-    {
-      "id": 12,
-      "disease": "Pregnancy Related Symptoms",
-      "keywords": ["pregnant","pregnancy","morning sickness","nausea pregnancy","vomiting pregnancy","swelling feet"],
-      "medicines": "Folic Acid 5mg - daily\nIron + Folic Acid tablet - daily\nCalcium tablet - daily",
-      "precautions": "Regular ANC checkups\nEat iron-rich foods\nRest adequately\nDo not take any other medicine without doctor",
-      "red_flags": "Refer IMMEDIATELY if: bleeding, severe headache, blurred vision, reduced fetal movement, fits",
-      "remedies": "Ginger tea for nausea\nSmall frequent meals\nElevate feet for swelling",
-      "duration_warning": "All pregnant women must be registered at PHC/ANM"
-    },
-    {
-      "id": 13,
-      "disease": "Dengue Fever",
-      "keywords": ["fever", "joint pain", "bone pain", "eye pain", "rash", "dengue", "bleeding gums"],
-      "medicines": "Paracetamol 500mg - for fever\nORS for hydration\nDO NOT USE Aspirin or Ibuprofen",
-      "precautions": "Use mosquito nets\nWear full sleeves\nDrink plenty of fluids (coconut water, ORS)",
-      "red_flags": "Refer IMMEDIATELY if: bleeding from nose/gums, severe stomach pain, persistent vomiting, extreme weakness",
-      "remedies": "Papaya leaf extract\nCoconut water\nAdequate rest",
-      "duration_warning": "Critical phase is 24-48 hours after fever drops. Monitor closely."
-    },
-    {
-      "id": 14,
-      "disease": "Urinary Tract Infection (UTI)",
-      "keywords": ["urine", "burning", "frequent urination", "pain lower abdomen", "uti", "blood in urine"],
-      "medicines": "Norfloxacin 400mg - twice daily - 3 days\nParacetamol - for pain/fever\nAlkalizer syrup (Citalka) - 2 tsp in water",
-      "precautions": "Drink 3-4 liters of water daily\nMaintain personal hygiene\nDo not hold urine",
-      "red_flags": "Refer if: fever with chills, back pain, blood in urine, pregnant woman",
-      "remedies": "Cranberry juice\nBarley water\nCoconut water",
-      "duration_warning": "If symptoms persist after 3 days of antibiotics, refer for urine culture."
-    }
-  ];
+  const medicalDataset: MedicalRecord[] = [];
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!medInput.symptoms) return;
     setMedStatus('loading');
     
-    const performAnalysis = () => {
+    // NLP Pre-analysis (Entity recognition)
+    let nlpEntities: any[] = [];
+    try {
+      const nlpData = await analyzeEntities(`${medInput.disease} ${medInput.symptoms} ${medInput.existing}`);
+      nlpEntities = nlpData.entities;
+    } catch (err) {
+      console.warn("NLP Analysis failed:", err);
+    }
+
+    const performAnalysisLocal = async () => {
       const inputWords = `${medInput.disease} ${medInput.symptoms} ${medInput.time} ${medInput.existing}`.toLowerCase().split(/\W+/);
       const combinedInput = `${medInput.disease} ${medInput.symptoms} ${medInput.time} ${medInput.existing}`.toLowerCase();
       
@@ -878,9 +1040,9 @@ export default function App() {
         for (const keyword of record.keywords) {
           const kwLower = keyword.toLowerCase();
           if (combinedInput.includes(kwLower)) {
-            score += 2; // Exact phrase match gets higher score
+            score += 2;
           } else if (inputWords.some(word => word.includes(kwLower) || kwLower.includes(word))) {
-            score += 1; // Partial word match
+            score += 1;
           }
         }
         if (score > highestScore) {
@@ -890,71 +1052,245 @@ export default function App() {
       }
 
       if (highestScore > 0 && bestMatch) {
-        setMedResult(bestMatch);
+        // Use Google Translation API to translate the local English record if user is online
+        const apiKey = import.meta.env.VITE_GOOGLE_SPEECH_API_KEY; 
+        const projectId = import.meta.env.VITE_GOOGLE_PROJECT_ID;
+        
+        if (apiKey && projectId && selectedLanguage !== 'English') {
+          try {
+            const translated: any = { ...bestMatch };
+            const fieldsToTranslate = ['disease', 'medicines', 'precautions', 'red_flags', 'remedies', 'duration_warning'];
+            
+            for (const field of fieldsToTranslate) {
+              translated[field] = await translateTextGoogleCloudV3(bestMatch[field as keyof MedicalRecord] as string, langCodeMap[selectedLanguage].split('-')[0], projectId, apiKey);
+            }
+            setMedResult({ id: Date.now(), keywords: [], ...translated });
+          } catch (e) {
+            setMedResult({ id: Date.now(), keywords: [], ...bestMatch });
+          }
+        } else {
+          setMedResult({ id: Date.now(), keywords: [], ...bestMatch });
+        }
         setMedStatus('success');
       } else {
         setMedStatus('error');
       }
     };
 
-    if (network !== 'Good') {
-      // Offline mode: Process immediately using local dataset
-      performAnalysis();
+    if (network === 'Good' || !import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY.includes('your_gemini')) {
+      // Online mode: Call Gemini AI
+      try {
+        const { GoogleGenerativeAI } = await import('@google/generative-ai');
+        const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        
+        const entityNames = nlpEntities.map(e => e.name).join(', ');
+        const prompt = `You are a medical assistant for an ASHA worker in rural India.
+Analyze these symptoms:
+Disease suspected: ${medInput.disease}
+Symptoms: ${medInput.symptoms}
+Duration: ${medInput.time}
+Existing conditions: ${medInput.existing}
+NLP Detected Terms: ${entityNames}
+
+Reply STRICTLY in JSON format with EXACTLY these string keys (no markdown formatting outside the JSON).
+Crucially, all the values inside the JSON MUST be translated to this language: ${selectedLanguage}.
+{
+  "disease": "Short name of most likely condition",
+  "medicines": "Suggested standard OTC medicines with dosage",
+  "precautions": "3-4 bullet points of precautions",
+  "red_flags": "When to immediately refer to a hospital",
+  "remedies": "Home remedies suitable for rural India",
+  "duration_warning": "Warning about duration"
+}`;
+        
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const aiResult = JSON.parse(jsonMatch[0]);
+          setMedResult({ id: Date.now(), keywords: [], ...aiResult });
+          setMedStatus('success');
+        } else {
+          throw new Error("Invalid format from AI");
+        }
+      } catch (err) {
+        console.error("Gemini AI failed, falling back to local dataset", err);
+        performAnalysisLocal();
+      }
     } else {
-      // Simulate network delay for online mode
-      setTimeout(performAnalysis, 1500);
+      // Offline mode or no API key: Process using local dataset
+      setTimeout(performAnalysisLocal, 800);
+    }
+  };
+  // --- Login Functions ---
+  const handleSendOtp = async () => {
+    if (!phoneNumber || phoneNumber.length < 10) {
+      setLoginError('Please enter a valid phone number');
+      return;
+    }
+    setLoginError('');
+    setLoginLoading(true);
+    
+    // Check if Firebase Auth is mocked
+    if (Object.keys(auth).length === 0) {
+      // Mock OTP flow
+      setTimeout(() => {
+        setLoginStep('otp');
+        setLoginLoading(false);
+        console.warn("Mock OTP sent: 123456");
+      }, 1000);
+      return;
+    }
+
+    try {
+      if (!(window as any).recaptchaVerifier) {
+        (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+          size: 'invisible',
+        });
+      }
+      const confirmation = await signInWithPhoneNumber(auth, phoneNumber, (window as any).recaptchaVerifier);
+      setConfirmationResult(confirmation);
+      setLoginStep('otp');
+    } catch (err: any) {
+      setLoginError(err.message || 'Failed to send OTP. Please try again.');
+      if ((window as any).recaptchaVerifier) {
+        (window as any).recaptchaVerifier.clear();
+        (window as any).recaptchaVerifier = null;
+      }
+    } finally {
+      setLoginLoading(false);
     }
   };
 
+  const handleVerifyOtp = async () => {
+    if (!otp || otp.length < 6) {
+      setLoginError('Please enter a valid 6-digit OTP');
+      return;
+    }
+    setLoginError('');
+    setLoginLoading(true);
+
+    if (Object.keys(auth).length === 0) {
+      setTimeout(() => {
+        if (otp === '123456') {
+          setLoginStep('profile');
+        } else {
+          setLoginError('Invalid Mock OTP. Use 123456');
+        }
+        setLoginLoading(false);
+      }, 1000);
+      return;
+    }
+
+    try {
+      await confirmationResult.confirm(otp);
+      setLoginStep('profile');
+    } catch (err: any) {
+      setLoginError(err.message || 'Invalid OTP. Please try again.');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleSaveProfile = () => {
+    if (!workerProfile.name || !workerProfile.ashaId || !workerProfile.village) {
+      setLoginError('Please fill all required fields');
+      return;
+    }
+    const finalProfile = { ...workerProfile, contactNumber: phoneNumber };
+    setAuthUser(finalProfile);
+    localStorage.setItem('aashalink_user', JSON.stringify(finalProfile));
+    setCurrentScreen('home');
+    if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+  };
+
+  const handleExportPDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text('ASHA Worker Patient Report', 14, 22);
+    
+    doc.setFontSize(11);
+    doc.text(`Generated by: ${authUser?.name || 'ASHA Worker'} (${authUser?.ashaId || 'N/A'})`, 14, 32);
+    doc.text(`Village/Ward: ${authUser?.village || 'N/A'}`, 14, 38);
+    doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 44);
+
+    const tableColumn = ["Name", "Age", "Location", "Blood Group", "Latest Disease"];
+    const tableRows: any[] = [];
+
+    patients.forEach(patient => {
+      const patientData = [
+        patient.name,
+        patient.age,
+        patient.loc,
+        patient.bloodGroup || 'N/A',
+        patient.disease || 'N/A',
+      ];
+      tableRows.push(patientData);
+    });
+
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: 50,
+      theme: 'grid',
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [4, 52, 44] } // Primary color
+    });
+
+    if (navigator.vibrate) navigator.vibrate(50);
+    doc.save(`AashaLink_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
   return (
-    <div className="min-h-screen bg-background font-sans text-stone-900 flex flex-col relative overflow-hidden">
-      {/* Top Section */}
-      {currentScreen !== 'login' && (
-        <header className="h-16 flex items-center justify-between px-6 border-b border-stone-100 bg-white relative z-10">
-          {currentScreen === 'home' ? (
-            <button onClick={() => setIsDrawerOpen(true)} className="p-2 -ml-2 hover:bg-stone-50 rounded-full transition-colors">
-              <Menu className="w-6 h-6 text-stone-700" />
-            </button>
-          ) : (
-            <button onClick={() => setCurrentScreen('home')} className="p-2 -ml-2 hover:bg-stone-50 rounded-full transition-colors">
-              <ArrowLeft className="w-6 h-6 text-stone-700" />
-            </button>
-          )}
-        <div className="flex flex-col items-center">
-          <h1 className="text-xl font-extrabold text-stone-800 tracking-tight">
-            {currentScreen === 'home' && t.ashaLink}
-            {currentScreen === 'patient-records' && t.patientRecords}
-            {currentScreen === 'blood-bank' && (selectedBloodGroup ? `Blood: ${selectedBloodGroup}` : t.bloodBank)}
-            {currentScreen === 'bed-availability' && t.bedAvailability}
-            {currentScreen === 'med-assistant' && t.medAssistant}
-            {currentScreen === 'voice-diary' && t.voiceDiary}
-            {currentScreen === 'settings' && t.settings}
-            {currentScreen === 'language' && t.selectLanguage}
-            {currentScreen === 'login' && 'Login'}
-            {currentScreen === 'profile' && t.profile}
-          </h1>
-          {activePatient && (
-            <span className="text-[10px] font-bold uppercase tracking-wider text-primary-700 bg-primary-50 px-2.5 py-0.5 rounded-full mt-0.5">
-              Active: {activePatient.name}
-            </span>
-          )}
-        </div>
-        <button onClick={() => setCurrentScreen('profile')} className="p-2 -mr-2 hover:bg-stone-50 rounded-full transition-colors">
-          <User className="w-6 h-6 text-stone-700" />
-        </button>
-      </header>
-      )}
+    <TranslationContext.Provider value={contextValue}>
+      <div className="min-h-screen bg-background font-sans text-stone-900 flex flex-col relative overflow-hidden">
+        {/* Top Section */}
+        {currentScreen !== 'login' && (
+          <header className="h-16 flex items-center justify-between px-6 border-b border-stone-100 bg-white relative z-10">
+            {currentScreen === 'home' ? (
+              <button onClick={() => setIsDrawerOpen(true)} className="p-2 -ml-2 hover:bg-stone-50 rounded-full transition-colors">
+                <Menu className="w-6 h-6 text-stone-700" />
+              </button>
+            ) : (
+              <button onClick={() => setCurrentScreen('home')} className="p-2 -ml-2 hover:bg-stone-50 rounded-full transition-colors">
+                <ArrowLeft className="w-6 h-6 text-stone-700" />
+              </button>
+            )}
+          <div className="flex flex-col items-center">
+            <h1 className="text-xl font-extrabold text-stone-800 tracking-tight">
+              {currentScreen === 'home' && <T k="ashaLink">AashaLink</T>}
+              {currentScreen === 'patient-records' && <T k="patientRecords">Patient Records</T>}
+              {currentScreen === 'blood-bank' && (selectedBloodGroup ? `Blood: ${selectedBloodGroup}` : <T k="bloodBank">Blood Bank</T>)}
+              {currentScreen === 'bed-availability' && <T k="bedAvailability">Bed Availability</T>}
+              {currentScreen === 'med-assistant' && <T k="medAssistant">Medi Assistant</T>}
+              {currentScreen === 'voice-diary' && <T k="voiceDiary">Voice Diary</T>}
+              {currentScreen === 'settings' && <T k="settings">Settings</T>}
+              {currentScreen === 'language' && <T k="selectLanguage">Select Language</T>}
+              {currentScreen === 'profile' && <T k="profile">Profile</T>}
+            </h1>
+            {activePatient && (
+              <span className="text-[10px] font-bold uppercase tracking-wider text-primary-700 bg-primary-50 px-2.5 py-0.5 rounded-full mt-0.5">
+                <T>Active</T>: {activePatient.name}
+              </span>
+            )}
+          </div>
+          <button onClick={() => setCurrentScreen('profile')} className="p-2 -mr-2 hover:bg-stone-50 rounded-full transition-colors">
+            <User className="w-6 h-6 text-stone-700" />
+          </button>
+        </header>
+        )}
 
-      {/* Network Status Bar */}
-      {currentScreen === 'home' && (
-        <NetworkIndicator 
-          status={network} 
-          syncStatus={syncStatus}
-          onToggle={() => setNetwork(prev => prev === 'Good' ? 'No network' : 'Good')} 
-        />
-      )}
+        {/* Network Status Bar */}
+        {currentScreen === 'home' && (
+          <NetworkIndicator 
+            status={network} 
+            syncStatus={syncStatus}
+            onToggle={() => setNetwork(prev => prev === 'Good' ? 'No network' : 'Good')} 
+          />
+        )}
 
-      <main className="flex-1 max-w-md mx-auto w-full px-6 py-8 flex flex-col overflow-y-auto">
+        <main className="flex-1 max-w-md mx-auto w-full px-6 py-8 flex flex-col overflow-y-auto">
         {currentScreen === 'home' ? (
           <>
             {isSosActive ? (
@@ -1006,12 +1342,20 @@ export default function App() {
                           <div className="p-1">
                             <h4 className="font-extrabold text-stone-800 mb-1">{service.name}</h4>
                             <p className="text-xs text-stone-500 mb-2">{service.type}</p>
-                            <button 
-                              onClick={() => window.open(`tel:${service.phone}`)}
-                              className="w-full bg-rose-500 text-white py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-2"
-                            >
-                              <Phone className="w-3 h-3" /> CALL {service.phone}
-                            </button>
+                            <div className="flex gap-2">
+                              <button 
+                                onClick={() => window.open(`tel:${service.phone}`)}
+                                className="flex-1 bg-rose-500 text-white py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1"
+                              >
+                                <Phone className="w-3 h-3" /> Call
+                              </button>
+                              <button 
+                                onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${service.lat},${service.lng}`, '_blank')}
+                                className="flex-1 bg-rose-50 text-rose-600 py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1 hover:bg-rose-100"
+                              >
+                                Directions
+                              </button>
+                            </div>
                           </div>
                         </Popup>
                       </Marker>
@@ -1046,10 +1390,10 @@ export default function App() {
               <>
                 {/* Feature Grid (2x2) */}
                 <div className="grid grid-cols-2 gap-4 mb-12">
-                  <FeatureCard icon={Mic} label={t.voiceDiaryLabel} onClick={() => setCurrentScreen('voice-diary')} />
-                  <FeatureCard icon={FileText} label={t.patientRecordsLabel} onClick={() => setCurrentScreen('patient-records')} />
-                  <FeatureCard icon={Bed} label={t.bedAvailabilityLabel} onClick={() => setCurrentScreen('bed-availability')} />
-                  <FeatureCard icon={Droplet} label={t.bloodBankLabel} onClick={() => { setCurrentScreen('blood-bank'); setSelectedBloodGroup(null); }} />
+                  <FeatureCard icon={Mic} label={<T k="voiceDiary">Voice Diary</T>} onClick={() => setCurrentScreen('voice-diary')} />
+                  <FeatureCard icon={FileText} label={<T k="patientRecords">Patient Records</T>} onClick={() => setCurrentScreen('patient-records')} />
+                  <FeatureCard icon={Bed} label={<T k="bedAvailability">Bed Availability</T>} onClick={() => setCurrentScreen('bed-availability')} />
+                  <FeatureCard icon={Droplet} label={<T k="bloodBank">Blood Bank</T>} onClick={() => { setCurrentScreen('blood-bank'); setSelectedBloodGroup(null); }} />
                 </div>
 
                 {/* Center SOS Element */}
@@ -1062,25 +1406,28 @@ export default function App() {
                         navigator.vibrate([100, 100, 100, 100, 100, 200, 300, 200, 300, 200, 300, 200, 100, 100, 100, 100, 100]);
                       }
                       
-                      // Get location
+                      const triggerSOS = (lat?: number, lng?: number) => {
+                        setIsSosActive(true);
+                        let message = `🚨 EMERGENCY ALERT from ASHA Worker: ${authUser?.name || 'Unknown'} (ID: ${authUser?.ashaId || 'Unknown'})!\n\nI need immediate assistance at my location!`;
+                        if (lat && lng) {
+                          message += `\n\nMy live location: https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+                        }
+                        window.open(`whatsapp://send?text=${encodeURIComponent(message)}`, '_blank');
+                      };
+
                       if (navigator.geolocation) {
                         navigator.geolocation.getCurrentPosition(
                           (position) => {
-                            setUserLocation({
-                              lat: position.coords.latitude,
-                              lng: position.coords.longitude
-                            });
-                            setIsSosActive(true);
+                            setUserLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+                            triggerSOS(position.coords.latitude, position.coords.longitude);
                           },
                           (error) => {
                             console.error("Error getting location", error);
-                            // Fallback to a default location for demo purposes if geolocation fails
-                            setUserLocation({ lat: 34.0522, lng: -118.2437 });
-                            setIsSosActive(true);
+                            triggerSOS();
                           }
                         );
                       } else {
-                        alert('SOS Alert Triggered! Emergency contacts have been notified. (Geolocation not supported)');
+                        triggerSOS();
                       }
                     }}
                     animate={{ 
@@ -1092,7 +1439,7 @@ export default function App() {
                     transition={{ repeat: Infinity, duration: 2 }}
                     className="w-36 h-36 bg-gradient-to-b from-rose-500 to-rose-600 rounded-full flex items-center justify-center text-white shadow-xl shadow-rose-200/50 border-4 border-white"
                   >
-                    <span className="text-4xl font-black tracking-tighter">SOS</span>
+                    <span className="text-4xl font-black tracking-tighter"><T k="sos">SOS</T></span>
                   </motion.button>
                 </div>
 
@@ -1100,47 +1447,99 @@ export default function App() {
                 <motion.button
                   whileTap={{ scale: 0.98 }}
                   onClick={() => setCurrentScreen('med-assistant')}
-                  className="w-full bg-white border-2 border-primary-100 p-5 rounded-3xl flex items-center gap-5 shadow-sm hover:border-primary-200 hover:shadow-md transition-all group"
+                  className="w-full bg-white border-2 border-primary-100 p-5 rounded-3xl flex items-center gap-5 shadow-sm hover:border-primary-200 hover:shadow-md transition-all group mb-8"
                 >
                   <div className="p-4 bg-primary-600 rounded-2xl shadow-inner shadow-primary-700/50 group-hover:bg-primary-500 transition-colors">
                     <PlusSquare className="w-8 h-8 text-white" />
                   </div>
                   <div className="text-left flex-1">
-                    <h3 className="text-lg font-extrabold text-stone-800">{t.mediAssistantLabel}</h3>
-                    <p className="text-xs text-stone-500 font-medium mt-0.5">{t.mediAssistantSub}</p>
+                    <h3 className="text-lg font-extrabold text-stone-800"><T k="mediAssistantLabel">Medi Assistant</T></h3>
+                    <p className="text-xs text-stone-500 font-medium mt-0.5"><T k="mediAssistantSub">Symptom analysis tool</T></p>
                   </div>
                   <div className="w-10 h-10 rounded-full bg-primary-50 flex items-center justify-center group-hover:bg-primary-100 transition-colors">
                     <Activity className="w-5 h-5 text-primary-600" />
                   </div>
                 </motion.button>
+
+                {/* Dataset Insights Section */}
+                <div className="bg-stone-50 rounded-3xl p-6 border border-stone-200 shadow-inner">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="bg-stone-200 p-2 rounded-lg">
+                      <ClipboardList className="w-5 h-5 text-stone-600" />
+                    </div>
+                    <h3 className="font-extrabold text-stone-800 tracking-tight"><T k="datasetInsights">Public Health Dataset Insights</T></h3>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-white rounded-2xl border border-stone-100">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-emerald-50 p-2 rounded-xl"><Activity className="w-4 h-4 text-emerald-600"/></div>
+                        <span className="text-sm font-bold text-stone-700"><T k="totalStates">Total States Tracked</T></span>
+                      </div>
+                      <span className="text-lg font-black text-emerald-600">{rawData.hospitals_and_beds.length - 2}</span>
+                    </div>
+                    
+                    <div className="flex items-center justify-between p-3 bg-white rounded-2xl border border-stone-100">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-blue-50 p-2 rounded-xl"><MapPin className="w-4 h-4 text-blue-600"/></div>
+                        <span className="text-sm font-bold text-stone-700"><T k="healthFacilities">Health Facilities</T></span>
+                      </div>
+                      <span className="text-lg font-black text-blue-600">{rawData.pmc_infrastructure.length}</span>
+                    </div>
+
+                    <div className="bg-primary-600 p-4 rounded-2xl text-white shadow-lg shadow-primary-200">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80 mb-1"><T k="topFacilityCity">Top Facility City</T></p>
+                      <p className="text-xl font-black">Pune PMC Area</p>
+                      <div className="w-full bg-white/20 h-1 rounded-full mt-3 overflow-hidden">
+                        <div className="bg-white h-full w-[85%]" />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <button 
+                    onClick={() => setCurrentScreen('bed-availability')}
+                    className="w-full mt-4 text-xs font-black text-stone-400 py-2 hover:text-primary-600 transition-colors uppercase tracking-widest"
+                  >
+                    <T k="viewAllRecords">View All Dataset Records</T> →
+                  </button>
+                </div>
               </>
             )}
           </>
         ) : currentScreen === 'patient-records' ? (
           <div className="pb-24">
-            <div className="relative mb-4">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 w-5 h-5" />
-              <input 
-                type="text" 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search patients..." 
-                className="w-full pl-12 pr-12 py-3.5 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-sm"
-              />
-              {searchQuery && (
-                <button 
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-rose-500 transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+            <div className="flex gap-2 mb-6">
+              <div className="relative flex-1">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 w-5 h-5" />
+                <input 
+                  type="text" 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={t_func("searchPatients", "Search patients...")} 
+                  className="w-full pl-12 pr-10 py-3.5 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-sm"
+                />
+                {searchQuery && (
+                  <button 
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-stone-400 hover:text-rose-500 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              <button 
+                onClick={handleExportPDF}
+                className="bg-primary-600 text-white p-3.5 rounded-2xl flex items-center justify-center shadow-sm hover:bg-primary-700 transition-colors"
+                title={t_func("exportPdf", "Export PDF Report")}
+              >
+                <Download className="w-5 h-5" />
+              </button>
             </div>
             
             {/* Advanced Filters */}
             <div className="flex gap-3 mb-6 overflow-x-auto pb-2 scrollbar-hide">
               <div className="flex-shrink-0 flex items-center gap-2 bg-white border border-stone-200 rounded-xl px-3 py-2 shadow-sm">
-                <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">Date</span>
+                <span className="text-xs font-bold text-stone-500 uppercase tracking-wider"><T k="date">Date</T></span>
                 <input 
                   type="date" 
                   value={patientDateFilter}
@@ -1152,13 +1551,13 @@ export default function App() {
                 )}
               </div>
               <div className="flex-shrink-0 flex items-center gap-2 bg-white border border-stone-200 rounded-xl px-3 py-2 shadow-sm">
-                <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">Blood</span>
+                <span className="text-xs font-bold text-stone-500 uppercase tracking-wider"><T k="blood">Blood</T></span>
                 <select 
                   value={patientBloodGroupFilter}
                   onChange={(e) => setPatientBloodGroupFilter(e.target.value)}
                   className="text-sm font-medium text-stone-700 bg-transparent focus:outline-none appearance-none pr-4"
                 >
-                  <option value="">All</option>
+                  <option value=""><T k="all">All</T></option>
                   <option value="A+">A+</option>
                   <option value="A-">A-</option>
                   <option value="B+">B+</option>
@@ -1173,21 +1572,26 @@ export default function App() {
 
             <div className="space-y-4">
               {filteredPatients.length === 0 ? (
-                <p className="text-center text-stone-500 mt-8 font-medium">No patients found.</p>
+                <p className="text-center text-stone-500 mt-8 font-medium"><T k="noPatientsFound">No patients found.</T></p>
               ) : (
                 filteredPatients.map((p, i) => (
                   <div key={i} className={`bg-white p-5 rounded-2xl border ${activePatient?.name === p.name ? 'border-primary-400 ring-1 ring-primary-400 bg-primary-50/30' : 'border-stone-100'} shadow-sm flex justify-between items-start transition-all`}>
                     <div className="flex-1">
                       <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-extrabold text-stone-800 text-lg">
-                            <HighlightText text={p.name} query={searchQuery} />
-                          </h3>
-                          <p className="text-sm text-stone-500 mt-0.5 font-medium">
-                            Age: {p.age} • Loc: <HighlightText text={p.loc} query={searchQuery} />
-                          </p>
-                          <p className="text-xs text-stone-400 mt-0.5 font-medium">DOB: {p.dob} • Blood: {p.bloodGroup}</p>
-                          <p className="text-xs text-stone-400 mt-0.5 font-medium">Contact: {p.contact}</p>
+                        <div className="flex gap-4">
+                          {p.photo && (
+                            <img src={p.photo} alt={p.name} className="w-16 h-16 rounded-xl object-cover border border-stone-200 flex-shrink-0 shadow-sm" />
+                          )}
+                          <div>
+                            <h3 className="font-extrabold text-stone-800 text-lg">
+                              <HighlightText text={p.name} query={searchQuery} />
+                            </h3>
+                            <p className="text-sm text-stone-500 mt-0.5 font-medium">
+                              <T k="age">Age</T>: {p.age} • <T k="loc">Loc</T>: <HighlightText text={p.loc} query={searchQuery} />
+                            </p>
+                            <p className="text-xs text-stone-400 mt-0.5 font-medium"><T k="dob">DOB</T>: {p.dob} • <T k="blood">Blood</T>: {p.bloodGroup}</p>
+                            <p className="text-xs text-stone-400 mt-0.5 font-medium"><T k="contact">Contact</T>: {p.contact}</p>
+                          </div>
                         </div>
                         <button 
                           onClick={() => setPatientToDelete(p)}
@@ -1201,7 +1605,7 @@ export default function App() {
                           onClick={() => setActivePatient(p)}
                           className={`text-xs font-bold px-4 py-2 rounded-xl transition-colors ${activePatient?.name === p.name ? 'bg-primary-600 text-white shadow-md shadow-primary-200' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
                         >
-                          {activePatient?.name === p.name ? 'Selected' : 'Select Patient'}
+                          {activePatient?.name === p.name ? <T k="selected">Selected</T> : <T k="selectPatient">Select Patient</T>}
                         </button>
                         <span className="bg-primary-50 text-primary-700 border border-primary-100 text-xs font-bold px-3 py-1.5 rounded-full">
                           <HighlightText text={p.disease} query={searchQuery} />
@@ -1233,15 +1637,15 @@ export default function App() {
                     className="bg-white rounded-3xl p-6 w-full max-w-sm relative z-10 shadow-2xl"
                   >
                     <div className="flex justify-between items-center mb-6">
-                      <h2 className="text-xl font-extrabold text-stone-800">Add New Patient</h2>
+                      <h2 className="text-xl font-extrabold text-stone-800"><T k="addNewPatient">Add New Patient</T></h2>
                       <button onClick={() => setIsAddModalOpen(false)} className="p-2 bg-stone-50 rounded-full"><X className="w-5 h-5 text-stone-500" /></button>
                     </div>
                     <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Basic Info</label>
-                        <input type="text" placeholder="Full Name" value={newPatient.name} onChange={e => setNewPatient({...newPatient, name: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1"><T k="basicInfo">Basic Info</T></label>
+                        <input type="text" placeholder={t_func("fullName", "Full Name")} value={newPatient.name} onChange={e => setNewPatient({...newPatient, name: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
                         <div className="grid grid-cols-2 gap-3">
-                          <input type="number" placeholder="Age" value={newPatient.age} onChange={e => setNewPatient({...newPatient, age: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
+                          <input type="number" placeholder={t_func("age", "Age")} value={newPatient.age} onChange={e => setNewPatient({...newPatient, age: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
                           <div className="relative">
                             <select 
                               value={newPatient.bloodGroup} 
@@ -1265,24 +1669,38 @@ export default function App() {
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Medical Info</label>
-                        <input type="text" placeholder="Location / Ward" value={newPatient.loc} onChange={e => setNewPatient({...newPatient, loc: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
-                        <input type="text" placeholder="Disease / Condition" value={newPatient.disease} onChange={e => setNewPatient({...newPatient, disease: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1"><T k="medicalInfo">Medical Info</T></label>
+                        <input type="text" placeholder={t_func("locationWard", "Location / Ward")} value={newPatient.loc} onChange={e => setNewPatient({...newPatient, loc: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
+                        <input type="text" placeholder={t_func("diseaseCondition", "Disease / Condition")} value={newPatient.disease} onChange={e => setNewPatient({...newPatient, disease: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Personal Details</label>
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1"><T k="personalDetails">Personal Details</T></label>
                         <div className="flex items-center gap-2 bg-stone-50 border border-stone-200 rounded-2xl px-4 py-3.5">
-                          <span className="text-xs font-bold text-stone-400 uppercase">DOB</span>
+                          <span className="text-xs font-bold text-stone-400 uppercase"><T k="dob">DOB</T></span>
                           <input type="date" value={newPatient.dob} onChange={e => setNewPatient({...newPatient, dob: e.target.value})} className="flex-1 bg-transparent focus:outline-none font-medium text-stone-700" />
                         </div>
-                        <input type="tel" placeholder="Contact Number" value={newPatient.contact} onChange={e => setNewPatient({...newPatient, contact: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
-                        <input type="tel" placeholder="Emergency Contact" value={newPatient.emergencyContact} onChange={e => setNewPatient({...newPatient, emergencyContact: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
-                        <textarea placeholder="Address" value={newPatient.address} onChange={e => setNewPatient({...newPatient, address: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium min-h-[80px]" />
+                        <input type="tel" placeholder={t_func("contactNumber", "Contact Number")} value={newPatient.contact} onChange={e => setNewPatient({...newPatient, contact: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
+                        <input type="tel" placeholder={t_func("emergencyContact", "Emergency Contact")} value={newPatient.emergencyContact} onChange={e => setNewPatient({...newPatient, emergencyContact: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
+                        <textarea placeholder={t_func("address", "Address")} value={newPatient.address} onChange={e => setNewPatient({...newPatient, address: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium min-h-[80px]" />
+                        
+                        <div className="mt-2">
+                          <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1 mb-1 block"><T k="photoAttachment">Photo Attachment</T></label>
+                          <input type="file" accept="image/*" capture="environment" onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              const reader = new FileReader();
+                              reader.onload = (event) => {
+                                setNewPatient({...newPatient, photo: event.target?.result as string});
+                              };
+                              reader.readAsDataURL(e.target.files[0]);
+                            }
+                          }} className="w-full p-2 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none font-medium text-sm text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100" />
+                          {newPatient.photo && <img src={newPatient.photo} alt="Preview" className="w-20 h-20 object-cover rounded-xl mt-2 border-2 border-stone-200 shadow-sm" />}
+                        </div>
                       </div>
 
                       <button onClick={handleAddPatient} className="w-full bg-primary-600 text-white font-bold py-4 rounded-2xl mt-2 hover:bg-primary-700 transition-colors shadow-md shadow-primary-200 sticky bottom-0">
-                        Save Patient
+                        <T k="savePatient">Save Patient</T>
                       </button>
                     </div>
                   </motion.div>
@@ -1306,11 +1724,11 @@ export default function App() {
                     <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mb-4">
                       <Trash2 className="w-8 h-8 text-rose-500" />
                     </div>
-                    <h2 className="text-xl font-extrabold text-stone-800 mb-2">Delete Patient Record</h2>
-                    <p className="text-stone-600 font-medium mb-6">Are you sure you want to delete the record for <span className="text-stone-900 font-bold">{patientToDelete.name}</span>? This action cannot be undone.</p>
+                    <h2 className="text-xl font-extrabold text-stone-800 mb-2"><T k="deletePatientRecord">Delete Patient Record</T></h2>
+                    <p className="text-stone-600 font-medium mb-6"><T k="confirmDelete">Are you sure you want to delete the record for</T> <span className="text-stone-900 font-bold">{patientToDelete.name}</span>? <T k="cannotUndo">This action cannot be undone.</T></p>
                     <div className="flex gap-3">
                       <button onClick={() => setPatientToDelete(null)} className="flex-1 bg-stone-100 text-stone-800 font-bold py-3 rounded-xl hover:bg-stone-200 transition-colors">
-                        Cancel
+                        <T k="cancel">Cancel</T>
                       </button>
                       <button 
                         onClick={() => {
@@ -1322,7 +1740,7 @@ export default function App() {
                         }} 
                         className="flex-1 bg-rose-600 text-white font-bold py-3 rounded-xl hover:bg-rose-700 transition-colors shadow-md shadow-rose-200"
                       >
-                        Delete
+                        <T k="delete">Delete</T>
                       </button>
                     </div>
                   </motion.div>
@@ -1337,7 +1755,7 @@ export default function App() {
                 <div className="flex items-center gap-4">
                   <div className="bg-primary-100 p-3 rounded-full"><User className="w-6 h-6 text-primary-600"/></div>
                   <div>
-                    <p className="text-sm text-stone-600 font-medium">Finding blood for:</p>
+                    <p className="text-sm text-stone-600 font-medium"><T k="findingBloodFor">Finding blood for:</T></p>
                     <p className="font-extrabold text-stone-800 text-lg">{activePatient.name} | {activePatient.age} | {activePatient.bloodGroup}</p>
                   </div>
                 </div>
@@ -1345,7 +1763,7 @@ export default function App() {
                   onClick={() => setCurrentScreen('patient-records')}
                   className="text-xs font-bold text-primary-600 bg-white px-3 py-1.5 rounded-xl border border-primary-200 hover:bg-primary-50 transition-colors"
                 >
-                  Change
+                  <T k="change">Change</T>
                 </button>
               </div>
             )}
@@ -1357,7 +1775,7 @@ export default function App() {
                   type="text" 
                   value={bbSearchQuery}
                   onChange={(e) => setBbSearchQuery(e.target.value)}
-                  placeholder="Search blood banks..." 
+                  placeholder={t_func("searchBloodBanks", "Search blood banks...")} 
                   className="w-full pl-12 pr-12 py-3.5 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-rose-500 shadow-sm"
                 />
                 {bbSearchQuery && (
@@ -1377,7 +1795,7 @@ export default function App() {
                     onChange={(e) => setSelectedBloodGroup(e.target.value || null)}
                     className="w-full pl-4 pr-10 py-3.5 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-rose-500 shadow-sm appearance-none font-bold text-stone-700 text-sm"
                   >
-                    <option value="">All Groups</option>
+                    <option value=""><T k="allGroups">All Groups</T></option>
                     {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(g => (
                       <option key={g} value={g}>{g}</option>
                     ))}
@@ -1391,11 +1809,11 @@ export default function App() {
                     onChange={(e) => setMaxDistance(Number(e.target.value))}
                     className="w-full pl-4 pr-10 py-3.5 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-rose-500 shadow-sm appearance-none font-bold text-stone-700 text-sm"
                   >
-                    <option value={5}>Within 5km</option>
-                    <option value={10}>Within 10km</option>
-                    <option value={20}>Within 20km</option>
-                    <option value={50}>Within 50km</option>
-                    <option value={100}>Within 100km</option>
+                    <option value={5}><T k="within5km">Within 5km</T></option>
+                    <option value={10}><T k="within10km">Within 10km</T></option>
+                    <option value={20}><T k="within20km">Within 20km</T></option>
+                    <option value={50}><T k="within50km">Within 50km</T></option>
+                    <option value={100}><T k="within100km">Within 100km</T></option>
                   </select>
                   <MapPin className="absolute right-4 top-1/2 -translate-y-1/2 text-stone-400 w-4 h-4 pointer-events-none" />
                 </div>
@@ -1412,11 +1830,11 @@ export default function App() {
                   <AlertCircle className="w-5 h-5 text-rose-600" />
                 </div>
                 <div>
-                  <p className="text-sm font-extrabold text-rose-800">Critical Stock Alert</p>
+                  <p className="text-sm font-extrabold text-rose-800"><T k="criticalStockAlert">Critical Stock Alert</T></p>
                   <div className="mt-1 space-y-1">
                     {allLowStock.map((alert, idx) => (
                       <p key={idx} className="text-xs text-rose-700 font-medium">
-                        <span className="font-bold underline">{alert.groups.join(', ')}</span> low at <span className="font-bold">{alert.name}</span>
+                        <span className="font-bold underline">{alert.groups.join(', ')}</span> <T k="lowAt">low at</T> <span className="font-bold">{alert.name}</span>
                       </p>
                     ))}
                   </div>
@@ -1429,13 +1847,13 @@ export default function App() {
                 onClick={() => setBbViewMode('list')}
                 className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${bbViewMode === 'list' ? 'bg-white text-rose-600 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
               >
-                List View
+                <T k="listView">List View</T>
               </button>
               <button 
                 onClick={() => setBbViewMode('map')}
                 className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${bbViewMode === 'map' ? 'bg-white text-rose-600 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
               >
-                Map View
+                <T k="mapView">Map View</T>
               </button>
             </div>
 
@@ -1452,12 +1870,12 @@ export default function App() {
                         <div className="p-1">
                           <h4 className="font-extrabold text-stone-800 mb-1">{bb.name}</h4>
                           <p className="text-xs text-stone-500 mb-2">{bb.address}</p>
-                          <p className="text-xs font-bold text-rose-600 mb-3">{bb.distance} km away</p>
+                          <p className="text-xs font-bold text-rose-600 mb-3">{bb.distance} <T k="kmAway">km away</T></p>
                           <button 
                             onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${bb.lat},${bb.lng}`, '_blank')}
                             className="w-full bg-rose-50 text-rose-600 py-2 rounded-lg font-bold text-xs hover:bg-rose-100 transition-colors"
                           >
-                            Get Directions
+                            <T k="getDirections">Get Directions</T>
                           </button>
                         </div>
                       </Popup>
@@ -1470,13 +1888,13 @@ export default function App() {
                 {filteredBloodBanks.length === 0 ? (
                   <div className="text-center py-12 bg-white rounded-3xl border border-stone-100">
                     <Droplet className="w-12 h-12 text-stone-200 mx-auto mb-4" />
-                    <p className="text-stone-500 font-bold">No blood banks found</p>
-                    <p className="text-xs text-stone-400 mt-1">Try adjusting your filters</p>
+                    <p className="text-stone-500 font-bold"><T k="noBloodBanksFound">No blood banks found</T></p>
+                    <p className="text-xs text-stone-400 mt-1"><T k="adjustFilters">Try adjusting your filters</T></p>
                     <button 
                       onClick={() => { setSelectedBloodGroup(null); setMaxDistance(50); setBbSearchQuery(''); }}
                       className="mt-6 text-sm font-bold text-rose-600 hover:underline"
                     >
-                      Reset Filters
+                      <T k="resetFilters">Reset Filters</T>
                     </button>
                   </div>
                 ) : (
@@ -1511,10 +1929,10 @@ export default function App() {
                           onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${bb.lat},${bb.lng}`, '_blank')}
                           className="flex-1 bg-stone-50 hover:bg-stone-100 text-stone-700 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-sm transition-colors border border-stone-200"
                         >
-                          <MapPin className="w-4 h-4" /> Location
+                          <MapPin className="w-4 h-4" /> <T k="location">Location</T>
                         </button>
                         <button className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-600 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-sm transition-colors border border-rose-100">
-                          <Phone className="w-4 h-4" /> Call
+                          <Phone className="w-4 h-4" /> <T k="call">Call</T>
                         </button>
                       </div>
                     </div>
@@ -1530,7 +1948,7 @@ export default function App() {
                 <div className="flex items-center gap-4">
                   <div className="bg-primary-100 p-3 rounded-full"><User className="w-6 h-6 text-primary-600"/></div>
                   <div>
-                    <p className="text-sm text-stone-600 font-medium">Finding bed for:</p>
+                    <p className="text-sm text-stone-600 font-medium"><T k="findingBedFor">Finding bed for:</T></p>
                     <p className="font-extrabold text-stone-800 text-lg">{activePatient.name} | {activePatient.age} | {activePatient.loc}</p>
                   </div>
                 </div>
@@ -1538,39 +1956,33 @@ export default function App() {
                   onClick={() => setCurrentScreen('patient-records')}
                   className="text-xs font-bold text-primary-600 bg-white px-3 py-1.5 rounded-xl border border-primary-200 hover:bg-primary-50 transition-colors"
                 >
-                  Change
+                  <T k="change">Change</T>
                 </button>
               </div>
             )}
             <div className="space-y-4">
-              <div className="bg-white p-5 rounded-2xl border border-stone-100 shadow-sm">
-                <h3 className="font-extrabold text-stone-800 text-lg">General Ward</h3>
-                <p className="text-sm text-stone-500 mt-1 mb-5 font-medium">City Hospital</p>
-                <div className="flex justify-between items-center">
-                  <span className="text-emerald-600 font-bold">12 Beds Available</span>
-                  <button className="bg-primary-600 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-primary-700 transition-colors shadow-md shadow-primary-200">
-                    Request Book
-                  </button>
+              {rawData.pmc_infrastructure.slice(0, 10).map((facility: any, index: number) => (
+                <div key={index} className="bg-white p-5 rounded-2xl border border-stone-100 shadow-sm">
+                  <h3 className="font-extrabold text-stone-800 text-lg">{facility['Facility Name']}</h3>
+                  <p className="text-sm text-stone-500 mt-1 mb-5 font-medium">{facility['Ward Name']}, {facility['City Name']} • {facility['Type  (Hospital / Nursing Home / Lab)']}</p>
+                  <div className="flex justify-between items-center">
+                    <span className={parseInt(facility['Number of Beds in facility type'] || '0') > 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>
+                      {facility['Number of Beds in facility type'] || '0'} <T k="bedsAvailable">Beds Available</T>
+                    </span>
+                    <button className="bg-primary-600 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-primary-700 transition-colors shadow-md shadow-primary-200">
+                      <T k="requestBook">Request Book</T>
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="bg-white p-5 rounded-2xl border border-stone-100 shadow-sm">
-                <h3 className="font-extrabold text-stone-800 text-lg">ICU</h3>
-                <p className="text-sm text-stone-500 mt-1 mb-5 font-medium">Metro Care</p>
-                <div className="flex justify-between items-center">
-                  <span className="text-rose-600 font-bold">2 Beds Available</span>
-                  <button className="bg-primary-600 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-primary-700 transition-colors shadow-md shadow-primary-200">
-                    Request Book
-                  </button>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         ) : currentScreen === 'voice-diary' ? (
           <div className="pb-24 flex flex-col h-full">
             {/* Tabs */}
             <div className="flex bg-stone-100 p-1 rounded-2xl mb-6 shrink-0">
-              <button onClick={() => setDiaryTab('record')} className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${diaryTab === 'record' ? 'bg-white text-stone-800 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>Record New</button>
-              <button onClick={() => setDiaryTab('list')} className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${diaryTab === 'list' ? 'bg-white text-stone-800 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}>Saved Entries</button>
+              <button onClick={() => setDiaryTab('record')} className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${diaryTab === 'record' ? 'bg-white text-stone-800 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}><T k="recordNew">Record New</T></button>
+              <button onClick={() => setDiaryTab('list')} className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${diaryTab === 'list' ? 'bg-white text-stone-800 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}><T k="savedEntries">Saved Entries</T></button>
             </div>
 
             {diaryTab === 'record' ? (
@@ -1580,7 +1992,7 @@ export default function App() {
                     <div className="flex items-center gap-4">
                       <div className="bg-primary-100 p-3 rounded-full"><User className="w-6 h-6 text-primary-600"/></div>
                       <div>
-                        <p className="text-sm text-stone-600 font-medium">Recording for:</p>
+                        <p className="text-sm text-stone-600 font-medium"><T k="recordingFor">Recording for:</T></p>
                         <p className="font-extrabold text-stone-800 text-lg">{activePatient.name} | {activePatient.age} | {activePatient.loc}</p>
                       </div>
                     </div>
@@ -1588,32 +2000,34 @@ export default function App() {
                       onClick={() => setCurrentScreen('patient-records')}
                       className="text-xs font-bold text-primary-600 bg-white px-3 py-1.5 rounded-xl border border-primary-200 hover:bg-primary-50 transition-colors"
                     >
-                      Change
+                      <T k="change">Change</T>
                     </button>
                   </div>
                 )}
-                
                 <div className="flex-1 bg-white border border-stone-200 rounded-3xl p-6 shadow-sm flex flex-col mb-6 relative overflow-hidden">
                   <div className="flex justify-between items-center mb-4 shrink-0">
-                    <h3 className="font-extrabold text-stone-800 text-lg">Transcript</h3>
+                    <h3 className="font-extrabold text-stone-800 text-lg"><T k="transcript">Transcript</T></h3>
                     <div className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2 ${isRecording ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-stone-100 text-stone-500 border border-stone-200'}`}>
                       {isRecording && <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />}
                       {formatTime(recordingTime)}
                     </div>
                   </div>
                   
-                  <div className="flex-1 overflow-y-auto">
-                    {transcript ? (
-                      <p className="text-stone-700 font-medium leading-relaxed text-lg">{transcript}</p>
-                    ) : (
-                      <div className="h-full flex flex-col items-center justify-center text-stone-400 space-y-3">
-                        <Mic className="w-12 h-12 opacity-20" />
-                        <p className="text-center font-medium">Tap the microphone below<br/>to start recording</p>
+                  <div className="flex-1 w-full flex flex-col relative">
+                    {isTranscribing && (
+                      <div className="absolute inset-0 bg-white/80 z-10 flex flex-col items-center justify-center backdrop-blur-sm rounded-xl">
+                        <div className="w-10 h-10 border-4 border-primary-100 border-t-primary-600 rounded-full animate-spin mb-3"></div>
+                        <p className="text-stone-600 font-bold animate-pulse"><T k="transcribing">Transcribing with Google Cloud AI...</T></p>
                       </div>
                     )}
+                    <textarea
+                      value={transcript}
+                      onChange={(e) => setTranscript(e.target.value)}
+                      placeholder={t_func("diaryPlaceholder", "Tap the microphone below to start recording, or type your manual diary entry here...")}
+                      className="flex-1 w-full resize-none outline-none text-stone-700 font-medium leading-relaxed text-lg placeholder:text-stone-300 bg-transparent"
+                    />
                   </div>
                 </div>
-
                 <div className="shrink-0 flex items-center justify-center gap-6 mb-8">
                   <button 
                     onClick={() => setShowDeleteDiaryConfirm(true)}
@@ -1719,7 +2133,36 @@ export default function App() {
                           </div>
                           <div className="flex gap-2">
                             <button 
-                              onClick={() => playDiary(diary.id, diary.transcript)}
+                              onClick={async () => {
+                                if (diary.translatedTranscript) {
+                                  // Toggle back to original?
+                                  setVoiceDiaries(prev => prev.map(d => d.id === diary.id ? {...d, translatedTranscript: undefined} : d));
+                                  return;
+                                }
+                                const apiKey = import.meta.env.VITE_GOOGLE_SPEECH_API_KEY;
+                                const projectId = import.meta.env.VITE_GOOGLE_PROJECT_ID;
+                                if (!apiKey || !projectId) {
+                                  alert('Google API Key or Project ID missing');
+                                  return;
+                                }
+                                setIsTranscribing(true);
+                                try {
+                                  const translated = await translateTextGoogleCloudV3(diary.transcript, 'en', projectId, apiKey);
+                                  setVoiceDiaries(prev => prev.map(d => d.id === diary.id ? {...d, translatedTranscript: translated} : d));
+                                } catch (e) {
+                                  alert('Translation failed');
+                                } finally {
+                                  setIsTranscribing(false);
+                                }
+                              }}
+                              className="p-2.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-xl transition-colors flex items-center gap-2"
+                              title="Translate to English"
+                            >
+                              <Globe className="w-5 h-5" />
+                              <span className="text-xs font-bold">{diary.translatedTranscript ? 'Original' : 'Translate'}</span>
+                            </button>
+                            <button 
+                              onClick={() => playDiary(diary.id, diary.translatedTranscript || diary.transcript)}
                               className={`p-2.5 rounded-xl transition-colors ${isPlaying === diary.id ? 'bg-rose-100 text-rose-600' : 'bg-primary-50 text-primary-600 hover:bg-primary-100'}`}
                             >
                               {isPlaying === diary.id ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
@@ -1732,8 +2175,9 @@ export default function App() {
                             </button>
                           </div>
                         </div>
-                        <p className="text-sm text-stone-600 leading-relaxed line-clamp-3 bg-stone-50/50 p-3 rounded-xl border border-stone-50">
-                          <HighlightText text={diary.transcript} query={diarySearchQuery} />
+                        <p className="text-sm text-stone-600 leading-relaxed bg-stone-50/50 p-4 rounded-xl border border-stone-50 whitespace-pre-wrap">
+                          {diary.translatedTranscript && <span className="block text-[10px] uppercase tracking-wider font-bold text-indigo-500 mb-2 italic">English Translation:</span>}
+                          <HighlightText text={diary.translatedTranscript || diary.transcript} query={diarySearchQuery} />
                         </p>
                       </div>
                     ))
@@ -1776,7 +2220,21 @@ export default function App() {
               <div className="space-y-4">
                 <input type="text" placeholder="Patient name" value={medInput.name} onChange={e => setMedInput({...medInput, name: e.target.value})} className="w-full p-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium shadow-sm" />
                 <input type="text" placeholder="Known or suspected disease (optional)" value={medInput.disease} onChange={e => setMedInput({...medInput, disease: e.target.value})} className="w-full p-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium shadow-sm" />
-                <textarea placeholder="Enter symptoms (e.g. fever, headache, vomiting)" rows={3} value={medInput.symptoms} onChange={e => setMedInput({...medInput, symptoms: e.target.value})} className="w-full p-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium shadow-sm resize-none" />
+                
+                <div className="relative">
+                  <textarea placeholder="Enter symptoms (e.g. fever, headache, vomiting) or use microphone" rows={3} value={medInput.symptoms} onChange={e => setMedInput({...medInput, symptoms: e.target.value})} className={`w-full p-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium shadow-sm resize-none pr-14 ${isTranscribing ? 'opacity-50 pointer-events-none' : ''}`} />
+                  {isTranscribing ? (
+                    <div className="absolute right-4 bottom-4 w-6 h-6 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
+                  ) : (
+                    <button 
+                      onClick={toggleMedRecording}
+                      className={`absolute right-3 bottom-3 p-2 rounded-xl transition-colors ${isMedRecording ? 'bg-rose-500 text-white animate-pulse' : 'bg-primary-50 text-primary-600 hover:bg-primary-100'}`}
+                    >
+                      <Mic className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+
                 <input type="text" placeholder="Since when? (e.g. 2 days, 5 hours)" value={medInput.time} onChange={e => setMedInput({...medInput, time: e.target.value})} className="w-full p-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium shadow-sm" />
                 <input type="text" placeholder="Existing conditions (e.g. diabetes, pregnant, BP)" value={medInput.existing} onChange={e => setMedInput({...medInput, existing: e.target.value})} className="w-full p-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium shadow-sm" />
                 
@@ -1812,34 +2270,34 @@ export default function App() {
               <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <div className="flex items-center justify-center gap-2 mb-6">
                   <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
-                  <span className="text-rose-600 font-bold text-sm tracking-wide">Offline Mode - Local Dataset</span>
+                  <span className="text-rose-600 font-bold text-sm tracking-wide"><T k="offlineModeDataset">Offline Mode - Local Dataset</T></span>
                 </div>
 
                 <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm">
-                  <h4 className="text-[11px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Possible Disease</h4>
-                  <p className="text-xl font-black text-stone-800">{medResult.disease}</p>
+                  <h4 className="text-[11px] font-bold text-stone-400 uppercase tracking-widest mb-1.5"><T k="possibleDisease">Possible Disease</T></h4>
+                  <p className="text-xl font-black text-stone-800"><T>{medResult.disease}</T></p>
                 </div>
 
                 <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm">
-                  <h4 className="text-[11px] font-bold text-stone-400 uppercase tracking-widest mb-3">Medicines</h4>
-                  <p className="text-stone-700 font-medium whitespace-pre-line leading-relaxed">{medResult.medicines}</p>
+                  <h4 className="text-[11px] font-bold text-stone-400 uppercase tracking-widest mb-3"><T k="medicines">Medicines</T></h4>
+                  <p className="text-stone-700 font-medium whitespace-pre-line leading-relaxed"><T>{medResult.medicines}</T></p>
                 </div>
 
                 <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm">
-                  <h4 className="text-[11px] font-bold text-stone-400 uppercase tracking-widest mb-3">Precautions</h4>
-                  <p className="text-stone-700 font-medium whitespace-pre-line leading-relaxed">{medResult.precautions}</p>
+                  <h4 className="text-[11px] font-bold text-stone-400 uppercase tracking-widest mb-3"><T k="precautions">Precautions</T></h4>
+                  <p className="text-stone-700 font-medium whitespace-pre-line leading-relaxed"><T>{medResult.precautions}</T></p>
                 </div>
 
                 <div className="bg-rose-50 p-6 rounded-3xl border-2 border-rose-200">
                   <h4 className="text-[11px] font-bold text-rose-600 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                    <AlertTriangle className="w-4 h-4" /> Refer to Doctor If
+                    <AlertTriangle className="w-4 h-4" /> <T k="referToDoctorIf">Refer to Doctor If</T>
                   </h4>
-                  <p className="text-rose-800 font-bold whitespace-pre-line leading-relaxed">{medResult.red_flags}</p>
+                  <p className="text-rose-800 font-bold whitespace-pre-line leading-relaxed"><T>{medResult.red_flags}</T></p>
                 </div>
 
                 <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm">
-                  <h4 className="text-[11px] font-bold text-stone-400 uppercase tracking-widest mb-3">Home Remedies</h4>
-                  <p className="text-stone-700 font-medium whitespace-pre-line leading-relaxed">{medResult.remedies}</p>
+                  <h4 className="text-[11px] font-bold text-stone-400 uppercase tracking-widest mb-3"><T k="homeRemedies">Home Remedies</T></h4>
+                  <p className="text-stone-700 font-medium whitespace-pre-line leading-relaxed"><T>{medResult.remedies}</T></p>
                 </div>
 
                 <div className="pt-6 space-y-3">
@@ -1847,28 +2305,124 @@ export default function App() {
                     onClick={handleSaveReport}
                     className="w-full bg-emerald-600 text-white font-bold py-4 rounded-2xl hover:bg-emerald-700 transition-colors shadow-md shadow-emerald-200"
                   >
-                    Save Report to Records
+                    <T k="saveReportToRecords">Save Report to Records</T>
                   </button>
                   <button 
                     onClick={() => { setMedStatus('idle'); setMedInput({ name: '', disease: '', symptoms: '', time: '', existing: '' }); }}
                     className="w-full bg-stone-100 text-stone-700 font-bold py-4 rounded-2xl hover:bg-stone-200 transition-colors"
                   >
-                    New Patient
+                    <T k="newPatient">New Patient</T>
                   </button>
                 </div>
               </div>
             )}
           </div>
         ) : currentScreen === 'login' ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-6">
-            <div className="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center mb-6">
+          <div className="flex-1 flex flex-col items-center justify-center p-6 h-full min-h-[80vh]">
+            <div className="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center mb-6 shrink-0">
               <User className="w-10 h-10 text-primary-600" />
             </div>
-            <h2 className="text-2xl font-extrabold text-stone-800 mb-2">Welcome Back</h2>
-            <p className="text-stone-500 mb-8 text-center">Login to your {t.ashaLink} account</p>
-            <button onClick={() => setCurrentScreen('home')} className="w-full bg-primary-600 text-white font-bold py-4 rounded-2xl hover:bg-primary-700 transition-colors shadow-lg shadow-primary-200">
-              Login as Asha Worker
-            </button>
+            <h2 className="text-2xl font-extrabold text-stone-800 mb-2"><T k="portalTitle">ASHA Worker Portal</T></h2>
+            <p className="text-stone-500 mb-8 text-center">
+              {loginStep === 'phone' ? <T k="enterPhone">Enter your mobile number to continue</T> : 
+               loginStep === 'otp' ? <T k="enterOtp">Enter the verification code sent to your phone</T> : 
+               <T k="completeProfile">Complete your profile setup</T>}
+            </p>
+            
+            <div className="w-full bg-white p-6 rounded-3xl border border-stone-100 shadow-sm">
+              {loginError && (
+                <div className="mb-4 p-3 bg-rose-50 border border-rose-100 text-rose-600 text-sm rounded-xl font-medium text-center">
+                  {loginError}
+                </div>
+              )}
+              
+              {loginStep === 'phone' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2 block">Mobile Number</label>
+                    <input 
+                      type="tel" 
+                      value={phoneNumber} 
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      placeholder="+91 9876543210"
+                      className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 font-bold text-stone-700 outline-none focus:border-primary-400 focus:bg-white transition-colors"
+                    />
+                  </div>
+                  <div id="recaptcha-container"></div>
+                  <button 
+                    onClick={handleSendOtp} 
+                    disabled={loginLoading}
+                    className="w-full bg-primary-600 text-white font-bold py-4 rounded-xl hover:bg-primary-700 transition-colors shadow-lg shadow-primary-200 disabled:opacity-70 flex justify-center items-center h-14"
+                  >
+                    {loginLoading ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <T k="sendOtp">Send OTP</T>}
+                  </button>
+                </div>
+              )}
+
+              {loginStep === 'otp' && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2 block">6-Digit OTP</label>
+                    <input 
+                      type="text" 
+                      maxLength={6}
+                      value={otp} 
+                      onChange={(e) => setOtp(e.target.value)}
+                      placeholder="123456"
+                      className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 font-bold text-stone-700 outline-none focus:border-primary-400 focus:bg-white transition-colors text-center tracking-widest text-lg"
+                    />
+                  </div>
+                  <button 
+                    onClick={handleVerifyOtp} 
+                    disabled={loginLoading}
+                    className="w-full bg-primary-600 text-white font-bold py-4 rounded-xl hover:bg-primary-700 transition-colors shadow-lg shadow-primary-200 disabled:opacity-70 flex justify-center items-center h-14"
+                  >
+                    {loginLoading ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Verify & Continue'}
+                  </button>
+                </div>
+              )}
+
+              {loginStep === 'profile' && (
+                <div className="space-y-4 max-h-[50vh] overflow-y-auto px-1 py-1 -mx-1">
+                  <div>
+                    <label className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2 block">Full Name</label>
+                    <input 
+                      type="text" 
+                      value={workerProfile.name} 
+                      onChange={(e) => setWorkerProfile({...workerProfile, name: e.target.value})}
+                      placeholder="Sita Devi"
+                      className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 font-bold text-stone-700 outline-none focus:border-primary-400 focus:bg-white transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2 block">ASHA Worker ID</label>
+                    <input 
+                      type="text" 
+                      value={workerProfile.ashaId} 
+                      onChange={(e) => setWorkerProfile({...workerProfile, ashaId: e.target.value})}
+                      placeholder="AW-2026-8942"
+                      className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 font-bold text-stone-700 outline-none focus:border-primary-400 focus:bg-white transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2 block">Assigned Village / Ward</label>
+                    <input 
+                      type="text" 
+                      value={workerProfile.village} 
+                      onChange={(e) => setWorkerProfile({...workerProfile, village: e.target.value})}
+                      placeholder="Village Name"
+                      className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 font-bold text-stone-700 outline-none focus:border-primary-400 focus:bg-white transition-colors"
+                    />
+                  </div>
+                  <button 
+                    onClick={handleSaveProfile} 
+                    className="w-full bg-primary-600 text-white font-bold py-4 rounded-xl hover:bg-primary-700 transition-colors shadow-lg shadow-primary-200 mt-2"
+                  >
+                    Complete Registration
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         ) : currentScreen === 'settings' ? (
           <div className="p-6 space-y-4">
@@ -1923,59 +2477,58 @@ export default function App() {
             <div className="w-24 h-24 bg-primary-100 rounded-full flex items-center justify-center mb-4 border-4 border-white shadow-lg">
               <User className="w-12 h-12 text-primary-600" />
             </div>
-            <h2 className="text-2xl font-extrabold text-stone-800">Anita Sharma</h2>
-            <p className="text-stone-500 font-medium mb-8">vishvcode@gmail.com</p>
+            <h2 className="text-2xl font-extrabold text-stone-800">{authUser?.name || 'ASHA Worker'}</h2>
+            <p className="text-stone-500 font-medium mb-8">{authUser?.contactNumber || 'No contact info'}</p>
 
-            {/* Personal Details Section */}
-            <div className="w-full bg-white rounded-3xl border border-stone-100 p-6 shadow-sm mb-6">
-              <h3 className="text-xs font-black text-stone-400 uppercase tracking-widest mb-4">{t.personalDetails}</h3>
-              <div className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-primary-50 rounded-xl text-primary-600"><User className="w-5 h-5" /></div>
-                  <div>
-                    <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">{t.designation}</p>
-                    <p className="font-bold text-stone-800">ANM (Auxiliary Nurse Midwife)</p>
+            <div className="w-full space-y-6">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-2"><T k="personalDetails">Personal Details</T></p>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-stone-100 shadow-sm">
+                    <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center"><User className="w-5 h-5 text-primary-600" /></div>
+                    <div>
+                      <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider"><T k="name">Name</T></p>
+                      <p className="font-extrabold text-stone-800">{authUser?.name}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-stone-100 shadow-sm">
+                    <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center"><MapPin className="w-5 h-5 text-blue-600" /></div>
+                    <div>
+                      <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider"><T k="assignedVillage">Assigned Village</T></p>
+                      <p className="font-extrabold text-stone-800">{authUser?.village}</p>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-primary-50 rounded-xl text-primary-600"><Activity className="w-5 h-5" /></div>
-                  <div>
-                    <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">{t.ashaId}</p>
-                    <p className="font-bold text-stone-800">ASHA-2024-8892</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-stone-400 mb-2"><T k="officialInfo">Official Info</T></p>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-stone-100 shadow-sm">
+                    <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center"><ShieldAlert className="w-5 h-5 text-amber-600" /></div>
+                    <div>
+                      <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider"><T k="ashaId">Asha ID</T></p>
+                      <p className="font-extrabold text-stone-800">{authUser?.ashaId}</p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-primary-50 rounded-xl text-primary-600"><MapPin className="w-5 h-5" /></div>
-                  <div>
-                    <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">{t.assignedVillage}</p>
-                    <p className="font-bold text-stone-800">Shirur, Pune District</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-primary-50 rounded-xl text-primary-600"><Phone className="w-5 h-5" /></div>
-                  <div>
-                    <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">{t.contactNumber}</p>
-                    <p className="font-bold text-stone-800">+91 98765 43210</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="p-2 bg-primary-50 rounded-xl text-primary-600"><Calendar className="w-5 h-5" /></div>
-                  <div>
-                    <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Joining Date</p>
-                    <p className="font-bold text-stone-800">12 Jan 2022</p>
+                  <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-stone-100 shadow-sm">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center"><Phone className="w-5 h-5 text-emerald-600" /></div>
+                    <div>
+                      <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider"><T k="contactNumber">Contact Number</T></p>
+                      <p className="font-extrabold text-stone-800">{authUser?.contactNumber}</p>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
             
-            <div className="w-full space-y-3">
+            <div className="w-full space-y-3 mt-6">
               <button onClick={() => setCurrentScreen('settings')} className="w-full bg-white rounded-2xl border border-stone-100 p-4 shadow-sm flex items-center gap-4 hover:border-primary-200 transition-colors text-left">
                 <Settings className="w-6 h-6 text-stone-400" />
-                <span className="font-bold text-stone-700 flex-1">{t.settings}</span>
+                <span className="font-bold text-stone-700 flex-1"><T k="settings">Settings</T></span>
               </button>
               <button onClick={() => setCurrentScreen('language')} className="w-full bg-white rounded-2xl border border-stone-100 p-4 shadow-sm flex items-center gap-4 hover:border-primary-200 transition-colors text-left">
                 <Globe className="w-6 h-6 text-stone-400" />
-                <span className="font-bold text-stone-700 flex-1">{t.selectLanguage}</span>
+                <span className="font-bold text-stone-700 flex-1"><T k="selectLanguage">Select Language</T></span>
               </button>
               <button onClick={() => setShowHelpDialog(true)} className="w-full bg-white rounded-2xl border border-stone-100 p-4 shadow-sm flex items-center gap-4 hover:border-primary-200 transition-colors text-left">
                 <HelpCircle className="w-6 h-6 text-stone-400" />
@@ -2089,7 +2642,15 @@ export default function App() {
                 <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 bg-stone-100 text-stone-800 font-bold py-3 rounded-xl hover:bg-stone-200 transition-colors">
                   Cancel
                 </button>
-                <button onClick={() => { setShowLogoutConfirm(false); setCurrentScreen('login'); }} className="flex-1 bg-rose-600 text-white font-bold py-3 rounded-xl hover:bg-rose-700 transition-colors shadow-md shadow-rose-200">
+                <button onClick={() => { 
+                  setShowLogoutConfirm(false); 
+                  setAuthUser(null);
+                  localStorage.removeItem('aashalink_user');
+                  setLoginStep('phone');
+                  setPhoneNumber('+91');
+                  setOtp('');
+                  setCurrentScreen('login'); 
+                }} className="flex-1 bg-rose-600 text-white font-bold py-3 rounded-xl hover:bg-rose-700 transition-colors shadow-md shadow-rose-200">
                   Yes, Logout
                 </button>
               </div>
@@ -2151,6 +2712,7 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
-    </div>
+      </div>
+    </TranslationContext.Provider>
   );
 }
