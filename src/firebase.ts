@@ -18,6 +18,11 @@ let app;
 let db: any = {};
 let auth: any = {};
 
+// Use the user-provided debug token for phone verification/app check testing
+if (typeof window !== 'undefined') {
+  (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = "AdrTqXG_MDs-SsxVvoFJ4L1VbiHwhH0f7QsMiw3uF09ryU8h3a4c-AEfftJioEZidX1EKfbRBTKgU8bs6wMzd3pinnTi-D14QKsd69ZE70cbBOPPFHuC-GaHse9EvC-WE5g0orSE1dvwCk_uhWBGCUM_jA";
+}
+
 try {
   if (firebaseConfig.apiKey === "mock_api_key") {
     console.warn("Using mock Firebase configuration.");

@@ -94,7 +94,7 @@ type Patient = {
   photo?: string;
 };
 type BloodBank = { name: string; address: string; phone: string; lat: number; lng: number; groups: string[]; lowStockGroups?: string[]; distance: number };
-type VoiceDiaryEntry = { id: string; patientName: string; date: string; duration: string; transcript: string; translatedTranscript?: string };
+type VoiceDiaryEntry = { id: string; patientName: string; date: string; duration: string; transcript: string; translatedTranscript?: string; tags?: string[] };
 
 type AshaWorker = {
   name: string;
@@ -395,6 +395,7 @@ const DrawerItem = ({ icon: Icon, label, isRed = false, onClick }: { icon: any; 
 );
 
 import { transcribeAudioGoogleCloudV2 } from './utils/googleSpeech';
+import { analyzeEntities } from './utils/googleNlp';
 
 const HighlightText = ({ text, query }: { text: string, query: string }) => {
   if (!query.trim()) return <>{text}</>;
@@ -521,19 +522,7 @@ export default function App() {
     }
   }, [authUser, currentScreen]);
 
-  // --- Patient Records State ---
-  const [activePatient, setActivePatient] = useState<Patient | null>(null);
-  const [patients, setPatients] = useState<Patient[]>(() => {
-    try {
-      const saved = localStorage.getItem('aashalink_patients');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
-  });
-');
-    }
-  };
+
 
   useEffect(() => {
     let wasOffline = !navigator.onLine;
@@ -926,12 +915,26 @@ export default function App() {
 
   const handleSaveDiary = async () => {
     if (!transcript.trim()) return;
+    
+    let tags: string[] = [];
+    try {
+      const nlpResult = await analyzeEntities(transcript);
+      if (nlpResult && nlpResult.entities) {
+        tags = nlpResult.entities
+          .slice(0, 3)
+          .map(e => e.name);
+      }
+    } catch (e) {
+      console.error("NLP extraction failed", e);
+    }
+
     const newEntry: VoiceDiaryEntry = {
       id: Date.now().toString(),
       patientName: activePatient?.name || 'Unknown Patient',
       date: new Date().toISOString().split('T')[0],
       duration: formatTime(recordingTime),
-      transcript: transcript
+      transcript: transcript,
+      tags: tags
     };
     setVoiceDiaries(prev => [newEntry, ...prev]);
     setTranscript('');
@@ -2177,6 +2180,15 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                             </button>
                           </div>
                         </div>
+                        {diary.tags && diary.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            {diary.tags.map((tag, idx) => (
+                              <span key={idx} className="bg-primary-50 text-primary-700 text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         <p className="text-sm text-stone-600 leading-relaxed bg-stone-50/50 p-4 rounded-xl border border-stone-50 whitespace-pre-wrap">
                           {diary.translatedTranscript && <span className="block text-[10px] uppercase tracking-wider font-bold text-indigo-500 mb-2 italic">English Translation:</span>}
                           <HighlightText text={diary.translatedTranscript || diary.transcript} query={diarySearchQuery} />
