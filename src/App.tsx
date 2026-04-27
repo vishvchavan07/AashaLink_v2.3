@@ -179,6 +179,8 @@ const T = ({ children, k }: { children: string, k?: string }) => {
 
   return <>{translated}</>;
 };
+
+const translations: Record<Language, any> = {
   English: {
     home: "Home",
     records: "Records",
