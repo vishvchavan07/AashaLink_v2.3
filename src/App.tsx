@@ -1439,7 +1439,48 @@ export default function App() {
     setMedInput({ name: '', disease: '', symptoms: '', time: '', existing: '' });
   };
 
-  const medicalDataset: MedicalRecord[] = [];
+  const medicalDataset: MedicalRecord[] = [
+    {
+      id: 1,
+      disease: 'Dengue Fever',
+      keywords: ['high fever', 'severe headache', 'pain behind eyes', 'joint pain', 'muscle pain', 'rash', 'nausea'],
+      medicines: 'Paracetamol 500mg, Hydration',
+      precautions: 'Use mosquito nets, wear long sleeves, remove stagnant water.',
+      red_flags: 'Severe abdominal pain, persistent vomiting, bleeding from gums or nose, difficulty breathing.',
+      remedies: 'Rest, plenty of fluids, papaya leaf extract (traditional).',
+      duration_warning: 'Symptoms typically last 2-7 days.'
+    },
+    {
+      id: 2,
+      disease: 'Common Cold / Flu',
+      keywords: ['fever', 'cough', 'sore throat', 'runny nose', 'sneezing', 'body ache'],
+      medicines: 'Cetirizine, Paracetamol, Vitamin C',
+      precautions: 'Hand washing, avoid close contact, wear mask.',
+      red_flags: 'High fever (>102F), chest pain, severe cough, difficulty swallowing.',
+      remedies: 'Warm saltwater gargle, steam inhalation, ginger tea.',
+      duration_warning: 'Should improve in 5-7 days.'
+    },
+    {
+      id: 3,
+      disease: 'Acute Diarrhea',
+      keywords: ['loose stools', 'stomach cramps', 'nausea', 'vomiting', 'bloating'],
+      medicines: 'ORS (Oral Rehydration Salts), Zinc tablets',
+      precautions: 'Wash hands with soap, drink boiled water, keep food covered.',
+      red_flags: 'Signs of dehydration (dry mouth, sunken eyes), bloody stools, severe weakness.',
+      remedies: 'Coconut water, rice water, curd (probiotics).',
+      duration_warning: 'Seek medical help if it persists beyond 48 hours.'
+    },
+    {
+      id: 4,
+      disease: 'Anemia',
+      keywords: ['fatigue', 'weakness', 'pale skin', 'dizziness', 'shortness of breath', 'brittle nails'],
+      medicines: 'Iron and Folic Acid (IFA) tablets',
+      precautions: 'Eat iron-rich foods, avoid tea/coffee immediately after meals.',
+      red_flags: 'Fainting spells, rapid heartbeat, extreme paleness.',
+      remedies: 'Spinach, jaggery, amla, lentils, pomegranate.',
+      duration_warning: 'Requires long-term dietary adjustment and supplementation.'
+    }
+  ];
 
   const handleAnalyze = async () => {
     if (!medInput.symptoms) return;
@@ -1492,7 +1533,7 @@ export default function App() {
       }
     };
 
-    if (network === 'Good' || !import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY.includes('your_gemini')) {
+    if (network === 'Good' && import.meta.env.VITE_GEMINI_API_KEY && !import.meta.env.VITE_GEMINI_API_KEY.includes('your_gemini')) {
       // Online mode: Call Gemini AI
       try {
         const { GoogleGenerativeAI } = await import('@google/generative-ai');
