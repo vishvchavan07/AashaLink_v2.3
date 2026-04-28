@@ -46,9 +46,9 @@ import {
   Box,
   Package,
   History as LucideHistory,
-  Moon,
   Sun,
-  Share2
+  Share2,
+  Bot
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
@@ -3587,69 +3587,10 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
         <nav className="h-20 bg-white border-t border-stone-100 flex items-center justify-around px-4 pb-2 relative z-10 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.05)]">
           <NavItem icon={Home} label={t_func_ctx('home', "Home")} active={currentScreen === 'home'} onClick={() => setCurrentScreen('home')} />
           <NavItem icon={ClipboardList} label={t_func_ctx('records', "Records")} active={currentScreen === 'patient-records'} onClick={() => setCurrentScreen('patient-records')} />
+          <NavItem icon={Bot} label={t_func_ctx('mediAssistant', "Assistant")} k="medAssistant" active={currentScreen === 'med-assistant'} onClick={() => setCurrentScreen('med-assistant')} />
           <NavItem icon={Mic} label={t_func_ctx('voice', "Voice")} active={currentScreen === 'voice-diary'} onClick={() => setCurrentScreen('voice-diary')} />
           <NavItem icon={User} label={t_func_ctx('profile', "Profile")} active={currentScreen === 'profile'} onClick={() => setCurrentScreen('profile')} />
         </nav>
-      )}
-
-      {/* Floating Medi Assistant Sneak-Peek Icon */}
-      {currentScreen === 'home' && (
-        <motion.div
-          initial={{ x: 100 }}
-          animate={{ 
-            x: 65,
-            transition: { type: 'spring', damping: 20, stiffness: 100 }
-          }}
-          whileHover={{ 
-            x: 0,
-            transition: { type: 'spring', damping: 15, stiffness: 150 }
-          }}
-          className="fixed right-0 top-1/2 -translate-y-1/2 z-[100] group cursor-pointer"
-          onClick={() => setCurrentScreen('med-assistant')}
-        >
-          <div className="relative flex items-center">
-            {/* Sneaking Tooltip */}
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.8, x: 20 }}
-              whileHover={{ opacity: 1, scale: 1, x: 0 }}
-              className="absolute right-20 bg-slate-800 text-white px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap shadow-xl pointer-events-none"
-            >
-              Need help, Sister? 🤖
-              <div className="absolute top-1/2 -right-1 -translate-y-1/2 w-2 h-2 bg-slate-800 rotate-45" />
-            </motion.div>
-
-            <div className="bg-white/90 backdrop-blur-md border-y border-l border-stone-200 shadow-[-10px_0_30px_-10px_rgba(0,0,0,0.1)] rounded-l-[40px] p-2 pl-6 pr-4 flex items-center gap-4 transition-all group-hover:bg-emerald-50 border-r-0 overflow-hidden">
-              <div className="text-right group-hover:opacity-100 opacity-0 transition-opacity duration-300">
-                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest leading-none">Medi AI</p>
-                <p className="text-xs font-black text-slate-800">Assistant</p>
-              </div>
-              
-              <motion.div 
-                animate={{ 
-                  y: [0, -4, 0],
-                  rotate: [0, 2, -2, 0]
-                }}
-                transition={{ 
-                  duration: 4, 
-                  repeat: Infinity, 
-                  ease: "easeInOut" 
-                }}
-                className="w-16 h-16 rounded-3xl overflow-hidden shadow-2xl border-2 border-white bg-white group-hover:border-emerald-400 transition-all relative z-10"
-              >
-                <img src="/src/assets/medi_assistant.png" alt="Medi AI" className="w-full h-full object-cover" />
-                {/* Glowing Eye Effect overlay */}
-                <div className="absolute inset-0 bg-emerald-400/5 mix-blend-overlay group-hover:bg-transparent transition-colors" />
-              </motion.div>
-            </div>
-
-            {/* Indicator "Pulse" for sneaking robot */}
-            <motion.div 
-              animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
-              transition={{ duration: 2, repeat: Infinity }}
-              className="absolute right-2 w-3 h-3 bg-emerald-500 rounded-full group-hover:hidden"
-            />
-          </div>
-        </motion.div>
       )}
 
       {/* Side Navigation Drawer */}
