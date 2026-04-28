@@ -1210,7 +1210,7 @@ export default function App() {
         };
 
         mediaRecorder.onstop = async () => {
-          const audioBlob = new Blob(medAudioChunksRef.current, { type: 'audio/webm' });
+          const audioBlob = new Blob(medAudioChunksRef.current, { type: medRecorderRef.current?.mimeType || 'audio/webm' });
           const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
           
           if (!apiKey || apiKey.includes('your_gemini')) {
@@ -1275,7 +1275,7 @@ export default function App() {
         };
 
         mediaRecorder.onstop = async () => {
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.mimeType || 'audio/webm' });
           const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
           if (!apiKey || apiKey.includes('your_gemini')) {
@@ -2707,7 +2707,7 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                     {isTranscribing && (
                       <div className="absolute inset-0 bg-white/80 z-10 flex flex-col items-center justify-center backdrop-blur-sm rounded-xl">
                         <div className="w-10 h-10 border-4 border-primary-100 border-t-primary-600 rounded-full animate-spin mb-3"></div>
-                        <p className="text-stone-600 font-bold animate-pulse"><T k="transcribing">Transcribing with Google Cloud AI...</T></p>
+                        <p className="text-stone-600 font-bold animate-pulse"><T k="transcribing">Transcribing with Gemini AI...</T></p>
                       </div>
                     )}
                     <textarea
