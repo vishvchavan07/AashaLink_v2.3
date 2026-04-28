@@ -1,0 +1,467 @@
+Running Gradle task 'assembleDebug'...                          
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+A problem occurred configuring project ':flutter_tts'.
+> Could not resolve all artifacts for configuration 'classpath'.
+   > Could not resolve com.android.tools:annotations:31.0.2.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.analytics-library:crash:31.0.2
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.analytics-library:shared:31.0.2
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.lint:lint-typedef-remover:31.0.2
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > androidx.databinding:databinding-compiler-common:8.0.2
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder-test-api:8.0.2
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.layoutlib:layoutlib-api:31.0.2
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder-model:8.0.2
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools:sdk-common:31.0.2 > com.android.tools:common:31.0.2
+      > Could not resolve com.android.tools:annotations:31.0.2.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/tools/annotations/31.0.2/annotations-31.0.2.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/com/android/tools/annotations/31.0.2/annotations-31.0.2.pom'.
+               > Got socket exception during request. It might be caused by SSL misconfiguration
+                  > Network is unreachable
+      > Could not resolve com.android.tools:annotations:31.0.2.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/com/android/tools/annotations/31.0.2/annotations-31.0.2.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/com/android/tools/annotations/31.0.2/annotations-31.0.2.pom'.
+               > repo.maven.apache.org: nodename nor servname provided, or not known
+   > Could not resolve com.android.tools.analytics-library:protos:31.0.2.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.analytics-library:shared:31.0.2
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder:8.0.2
+      > Could not resolve com.android.tools.analytics-library:protos:31.0.2.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/protos/31.0.2/protos-31.0.2.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/protos/31.0.2/protos-31.0.2.pom'.
+               > dl.google.com: nodename nor servname provided, or not known
+      > Could not resolve com.android.tools.analytics-library:protos:31.0.2.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/com/android/tools/analytics-library/protos/31.0.2/protos-31.0.2.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/com/android/tools/analytics-library/protos/31.0.2/protos-31.0.2.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-stdlib:1.7.10.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.7.10
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools:sdk-common:31.0.2 > org.jetbrains.kotlin:kotlin-reflect:1.7.10
+      > Could not resolve org.jetbrains.kotlin:kotlin-stdlib:1.7.10.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.7.10/kotlin-stdlib-1.7.10.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.7.10/kotlin-stdlib-1.7.10.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-stdlib:1.7.10.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.7.10/kotlin-stdlib-1.7.10.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.7.10/kotlin-stdlib-1.7.10.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.7.10.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.7.10
+      > Could not resolve org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.7.10.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.7.10/kotlin-stdlib-jdk7-1.7.10.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.7.10/kotlin-stdlib-jdk7-1.7.10.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.7.10.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.7.10/kotlin-stdlib-jdk7-1.7.10.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.7.10/kotlin-stdlib-jdk7-1.7.10.pom'.
+               > repo.maven.apache.org
+   > Could not resolve com.android:signflinger:8.0.2.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder:8.0.2
+      > Could not resolve com.android:signflinger:8.0.2.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/signflinger/8.0.2/signflinger-8.0.2.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/com/android/signflinger/8.0.2/signflinger-8.0.2.pom'.
+               > dl.google.com
+      > Could not resolve com.android:signflinger:8.0.2.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/com/android/signflinger/8.0.2/signflinger-8.0.2.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/com/android/signflinger/8.0.2/signflinger-8.0.2.pom'.
+               > repo.maven.apache.org
+   > Could not resolve com.android.tools.analytics-library:tracker:31.0.2.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder:8.0.2
+      > Could not resolve com.android.tools.analytics-library:tracker:31.0.2.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/tracker/31.0.2/tracker-31.0.2.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/tracker/31.0.2/tracker-31.0.2.pom'.
+               > dl.google.com
+      > Could not resolve com.android.tools.analytics-library:tracker:31.0.2.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/com/android/tools/analytics-library/tracker/31.0.2/tracker-31.0.2.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/com/android/tools/analytics-library/tracker/31.0.2/tracker-31.0.2.pom'.
+               > repo.maven.apache.org
+   > Could not resolve com.android.tools.build:manifest-merger:31.0.2.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder:8.0.2
+      > Could not resolve com.android.tools.build:manifest-merger:31.0.2.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/tools/build/manifest-merger/31.0.2/manifest-merger-31.0.2.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/com/android/tools/build/manifest-merger/31.0.2/manifest-merger-31.0.2.pom'.
+               > dl.google.com
+      > Could not resolve com.android.tools.build:manifest-merger:31.0.2.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/com/android/tools/build/manifest-merger/31.0.2/manifest-merger-31.0.2.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/com/android/tools/build/manifest-merger/31.0.2/manifest-merger-31.0.2.pom'.
+               > repo.maven.apache.org
+   > Could not resolve com.android:zipflinger:8.0.2.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder:8.0.2
+      > Could not resolve com.android:zipflinger:8.0.2.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/zipflinger/8.0.2/zipflinger-8.0.2.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/com/android/zipflinger/8.0.2/zipflinger-8.0.2.pom'.
+               > dl.google.com
+      > Could not resolve com.android:zipflinger:8.0.2.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/com/android/zipflinger/8.0.2/zipflinger-8.0.2.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/com/android/zipflinger/8.0.2/zipflinger-8.0.2.pom'.
+               > repo.maven.apache.org
+   > Could not resolve com.android.tools.build:apksig:8.0.2.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder:8.0.2
+      > Could not resolve com.android.tools.build:apksig:8.0.2.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/tools/build/apksig/8.0.2/apksig-8.0.2.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/com/android/tools/build/apksig/8.0.2/apksig-8.0.2.pom'.
+               > dl.google.com
+      > Could not resolve com.android.tools.build:apksig:8.0.2.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/com/android/tools/build/apksig/8.0.2/apksig-8.0.2.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/com/android/tools/build/apksig/8.0.2/apksig-8.0.2.pom'.
+               > repo.maven.apache.org
+   > Could not resolve com.android.tools.build:apkzlib:8.0.2.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder:8.0.2
+      > Could not resolve com.android.tools.build:apkzlib:8.0.2.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/tools/build/apkzlib/8.0.2/apkzlib-8.0.2.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/com/android/tools/build/apkzlib/8.0.2/apkzlib-8.0.2.pom'.
+               > dl.google.com
+      > Could not resolve com.android.tools.build:apkzlib:8.0.2.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/com/android/tools/build/apkzlib/8.0.2/apkzlib-8.0.2.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/com/android/tools/build/apkzlib/8.0.2/apkzlib-8.0.2.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-gradle-plugin-annotations:1.8.20.
+     Required by:
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-gradle-plugins-bom:1.8.20
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-gradle-plugin-api:1.8.20
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-gradle-plugin-idea:1.8.20
+      > Could not resolve org.jetbrains.kotlin:kotlin-gradle-plugin-annotations:1.8.20.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-annotations/1.8.20/kotlin-gradle-plugin-annotations-1.8.20.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-annotations/1.8.20/kotlin-gradle-plugin-annotations-1.8.20.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-gradle-plugin-annotations:1.8.20.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-annotations/1.8.20/kotlin-gradle-plugin-annotations-1.8.20.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-annotations/1.8.20/kotlin-gradle-plugin-annotations-1.8.20.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-native-utils:1.8.20.
+     Required by:
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-gradle-plugins-bom:1.8.20
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-gradle-plugin-api:1.8.20
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-klib-commonizer-api:1.8.20
+      > Could not resolve org.jetbrains.kotlin:kotlin-native-utils:1.8.20.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-native-utils/1.8.20/kotlin-native-utils-1.8.20.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-native-utils/1.8.20/kotlin-native-utils-1.8.20.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-native-utils:1.8.20.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-native-utils/1.8.20/kotlin-native-utils-1.8.20.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-native-utils/1.8.20/kotlin-native-utils-1.8.20.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-util-io:1.8.20.
+     Required by:
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-util-klib:1.8.20
+      > Could not resolve org.jetbrains.kotlin:kotlin-util-io:1.8.20.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-util-io/1.8.20/kotlin-util-io-1.8.20.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-util-io/1.8.20/kotlin-util-io-1.8.20.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-util-io:1.8.20.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-io/1.8.20/kotlin-util-io-1.8.20.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-io/1.8.20/kotlin-util-io-1.8.20.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-daemon-embeddable:1.8.20.
+     Required by:
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-compiler-embeddable:1.8.20
+      > Could not resolve org.jetbrains.kotlin:kotlin-daemon-embeddable:1.8.20.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/1.8.20/kotlin-daemon-embeddable-1.8.20.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/1.8.20/kotlin-daemon-embeddable-1.8.20.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-daemon-embeddable:1.8.20.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/1.8.20/kotlin-daemon-embeddable-1.8.20.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/1.8.20/kotlin-daemon-embeddable-1.8.20.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-daemon-client:1.8.20.
+     Required by:
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-compiler-runner:1.8.20
+      > Could not resolve org.jetbrains.kotlin:kotlin-daemon-client:1.8.20.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-daemon-client/1.8.20/kotlin-daemon-client-1.8.20.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-daemon-client/1.8.20/kotlin-daemon-client-1.8.20.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-daemon-client:1.8.20.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-client/1.8.20/kotlin-daemon-client-1.8.20.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-client/1.8.20/kotlin-daemon-client-1.8.20.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.5.0.
+     Required by:
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-compiler-runner:1.8.20
+      > Could not resolve org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.5.0.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.0/kotlinx-coroutines-core-jvm-1.5.0.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.0/kotlinx-coroutines-core-jvm-1.5.0.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.5.0.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.0/kotlinx-coroutines-core-jvm-1.5.0.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.0/kotlinx-coroutines-core-jvm-1.5.0.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-scripting-common:1.8.20.
+     Required by:
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-scripting-compiler-impl-embeddable:1.8.20
+      > Could not resolve org.jetbrains.kotlin:kotlin-scripting-common:1.8.20.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-scripting-common/1.8.20/kotlin-scripting-common-1.8.20.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-scripting-common/1.8.20/kotlin-scripting-common-1.8.20.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-scripting-common:1.8.20.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-common/1.8.20/kotlin-scripting-common-1.8.20.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-common/1.8.20/kotlin-scripting-common-1.8.20.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-scripting-jvm:1.8.20.
+     Required by:
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-scripting-compiler-impl-embeddable:1.8.20
+      > Could not resolve org.jetbrains.kotlin:kotlin-scripting-jvm:1.8.20.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-scripting-jvm/1.8.20/kotlin-scripting-jvm-1.8.20.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-scripting-jvm/1.8.20/kotlin-scripting-jvm-1.8.20.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-scripting-jvm:1.8.20.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-jvm/1.8.20/kotlin-scripting-jvm-1.8.20.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-jvm/1.8.20/kotlin-scripting-jvm-1.8.20.pom'.
+               > repo.maven.apache.org
+> Failed to notify project evaluation listener.
+   > java.lang.NullPointerException (no error message)
+   > java.lang.NullPointerException (no error message)
+> There are 2 more failures with identical causes.
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 31m 14s
+Running Gradle task 'assembleDebug'...                           2739.0s
+[!] Gradle threw an error while downloading artifacts from the network.
+Retrying Gradle Build: #1, wait time: 100ms
+Running Gradle task 'assembleDebug'...                          
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+A problem occurred configuring project ':flutter_tts'.
+> Could not resolve all artifacts for configuration 'classpath'.
+   > Could not resolve com.android.tools:annotations:31.0.2.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.analytics-library:crash:31.0.2
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.analytics-library:shared:31.0.2
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.lint:lint-typedef-remover:31.0.2
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > androidx.databinding:databinding-compiler-common:8.0.2
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder-test-api:8.0.2
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.layoutlib:layoutlib-api:31.0.2
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder-model:8.0.2
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools:sdk-common:31.0.2 > com.android.tools:common:31.0.2
+      > Could not resolve com.android.tools:annotations:31.0.2.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/tools/annotations/31.0.2/annotations-31.0.2.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/com/android/tools/annotations/31.0.2/annotations-31.0.2.pom'.
+               > dl.google.com
+      > Could not resolve com.android.tools:annotations:31.0.2.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/com/android/tools/annotations/31.0.2/annotations-31.0.2.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/com/android/tools/annotations/31.0.2/annotations-31.0.2.pom'.
+               > repo.maven.apache.org
+   > Could not resolve com.android.tools.analytics-library:protos:31.0.2.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.analytics-library:shared:31.0.2
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder:8.0.2
+      > Could not resolve com.android.tools.analytics-library:protos:31.0.2.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/protos/31.0.2/protos-31.0.2.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/protos/31.0.2/protos-31.0.2.pom'.
+               > dl.google.com
+      > Could not resolve com.android.tools.analytics-library:protos:31.0.2.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/com/android/tools/analytics-library/protos/31.0.2/protos-31.0.2.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/com/android/tools/analytics-library/protos/31.0.2/protos-31.0.2.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-stdlib:1.7.10.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.7.10
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools:sdk-common:31.0.2 > org.jetbrains.kotlin:kotlin-reflect:1.7.10
+      > Could not resolve org.jetbrains.kotlin:kotlin-stdlib:1.7.10.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.7.10/kotlin-stdlib-1.7.10.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.7.10/kotlin-stdlib-1.7.10.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-stdlib:1.7.10.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.7.10/kotlin-stdlib-1.7.10.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/1.7.10/kotlin-stdlib-1.7.10.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.7.10.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.7.10
+      > Could not resolve org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.7.10.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.7.10/kotlin-stdlib-jdk7-1.7.10.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.7.10/kotlin-stdlib-jdk7-1.7.10.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.7.10.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.7.10/kotlin-stdlib-jdk7-1.7.10.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.7.10/kotlin-stdlib-jdk7-1.7.10.pom'.
+               > repo.maven.apache.org
+   > Could not resolve com.android:signflinger:8.0.2.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder:8.0.2
+      > Could not resolve com.android:signflinger:8.0.2.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/signflinger/8.0.2/signflinger-8.0.2.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/com/android/signflinger/8.0.2/signflinger-8.0.2.pom'.
+               > dl.google.com
+      > Could not resolve com.android:signflinger:8.0.2.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/com/android/signflinger/8.0.2/signflinger-8.0.2.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/com/android/signflinger/8.0.2/signflinger-8.0.2.pom'.
+               > repo.maven.apache.org
+   > Could not resolve com.android.tools.analytics-library:tracker:31.0.2.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder:8.0.2
+      > Could not resolve com.android.tools.analytics-library:tracker:31.0.2.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/tracker/31.0.2/tracker-31.0.2.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/com/android/tools/analytics-library/tracker/31.0.2/tracker-31.0.2.pom'.
+               > dl.google.com
+      > Could not resolve com.android.tools.analytics-library:tracker:31.0.2.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/com/android/tools/analytics-library/tracker/31.0.2/tracker-31.0.2.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/com/android/tools/analytics-library/tracker/31.0.2/tracker-31.0.2.pom'.
+               > repo.maven.apache.org
+   > Could not resolve com.android.tools.build:manifest-merger:31.0.2.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder:8.0.2
+      > Could not resolve com.android.tools.build:manifest-merger:31.0.2.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/tools/build/manifest-merger/31.0.2/manifest-merger-31.0.2.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/com/android/tools/build/manifest-merger/31.0.2/manifest-merger-31.0.2.pom'.
+               > dl.google.com
+      > Could not resolve com.android.tools.build:manifest-merger:31.0.2.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/com/android/tools/build/manifest-merger/31.0.2/manifest-merger-31.0.2.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/com/android/tools/build/manifest-merger/31.0.2/manifest-merger-31.0.2.pom'.
+               > repo.maven.apache.org
+   > Could not resolve com.android:zipflinger:8.0.2.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder:8.0.2
+      > Could not resolve com.android:zipflinger:8.0.2.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/zipflinger/8.0.2/zipflinger-8.0.2.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/com/android/zipflinger/8.0.2/zipflinger-8.0.2.pom'.
+               > dl.google.com
+      > Could not resolve com.android:zipflinger:8.0.2.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/com/android/zipflinger/8.0.2/zipflinger-8.0.2.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/com/android/zipflinger/8.0.2/zipflinger-8.0.2.pom'.
+               > repo.maven.apache.org
+   > Could not resolve com.android.tools.build:apksig:8.0.2.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder:8.0.2
+      > Could not resolve com.android.tools.build:apksig:8.0.2.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/tools/build/apksig/8.0.2/apksig-8.0.2.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/com/android/tools/build/apksig/8.0.2/apksig-8.0.2.pom'.
+               > dl.google.com
+      > Could not resolve com.android.tools.build:apksig:8.0.2.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/com/android/tools/build/apksig/8.0.2/apksig-8.0.2.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/com/android/tools/build/apksig/8.0.2/apksig-8.0.2.pom'.
+               > repo.maven.apache.org
+   > Could not resolve com.android.tools.build:apkzlib:8.0.2.
+     Required by:
+         project :flutter_tts > com.android.tools.build:gradle:8.0.2 > com.android.tools.build:builder:8.0.2
+      > Could not resolve com.android.tools.build:apkzlib:8.0.2.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/com/android/tools/build/apkzlib/8.0.2/apkzlib-8.0.2.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/com/android/tools/build/apkzlib/8.0.2/apkzlib-8.0.2.pom'.
+               > dl.google.com
+      > Could not resolve com.android.tools.build:apkzlib:8.0.2.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/com/android/tools/build/apkzlib/8.0.2/apkzlib-8.0.2.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/com/android/tools/build/apkzlib/8.0.2/apkzlib-8.0.2.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-gradle-plugin-annotations:1.8.20.
+     Required by:
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-gradle-plugins-bom:1.8.20
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-gradle-plugin-api:1.8.20
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-gradle-plugin-idea:1.8.20
+      > Could not resolve org.jetbrains.kotlin:kotlin-gradle-plugin-annotations:1.8.20.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-annotations/1.8.20/kotlin-gradle-plugin-annotations-1.8.20.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-annotations/1.8.20/kotlin-gradle-plugin-annotations-1.8.20.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-gradle-plugin-annotations:1.8.20.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-annotations/1.8.20/kotlin-gradle-plugin-annotations-1.8.20.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-gradle-plugin-annotations/1.8.20/kotlin-gradle-plugin-annotations-1.8.20.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-native-utils:1.8.20.
+     Required by:
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-gradle-plugins-bom:1.8.20
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-gradle-plugin-api:1.8.20
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-klib-commonizer-api:1.8.20
+      > Could not resolve org.jetbrains.kotlin:kotlin-native-utils:1.8.20.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-native-utils/1.8.20/kotlin-native-utils-1.8.20.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-native-utils/1.8.20/kotlin-native-utils-1.8.20.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-native-utils:1.8.20.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-native-utils/1.8.20/kotlin-native-utils-1.8.20.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-native-utils/1.8.20/kotlin-native-utils-1.8.20.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-util-io:1.8.20.
+     Required by:
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-util-klib:1.8.20
+      > Could not resolve org.jetbrains.kotlin:kotlin-util-io:1.8.20.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-util-io/1.8.20/kotlin-util-io-1.8.20.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-util-io/1.8.20/kotlin-util-io-1.8.20.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-util-io:1.8.20.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-io/1.8.20/kotlin-util-io-1.8.20.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-util-io/1.8.20/kotlin-util-io-1.8.20.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-daemon-embeddable:1.8.20.
+     Required by:
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-compiler-embeddable:1.8.20
+      > Could not resolve org.jetbrains.kotlin:kotlin-daemon-embeddable:1.8.20.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/1.8.20/kotlin-daemon-embeddable-1.8.20.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/1.8.20/kotlin-daemon-embeddable-1.8.20.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-daemon-embeddable:1.8.20.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/1.8.20/kotlin-daemon-embeddable-1.8.20.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-embeddable/1.8.20/kotlin-daemon-embeddable-1.8.20.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-daemon-client:1.8.20.
+     Required by:
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-compiler-runner:1.8.20
+      > Could not resolve org.jetbrains.kotlin:kotlin-daemon-client:1.8.20.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-daemon-client/1.8.20/kotlin-daemon-client-1.8.20.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-daemon-client/1.8.20/kotlin-daemon-client-1.8.20.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-daemon-client:1.8.20.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-client/1.8.20/kotlin-daemon-client-1.8.20.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-daemon-client/1.8.20/kotlin-daemon-client-1.8.20.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.5.0.
+     Required by:
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-compiler-runner:1.8.20
+      > Could not resolve org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.5.0.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.0/kotlinx-coroutines-core-jvm-1.5.0.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.0/kotlinx-coroutines-core-jvm-1.5.0.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.5.0.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.0/kotlinx-coroutines-core-jvm-1.5.0.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.5.0/kotlinx-coroutines-core-jvm-1.5.0.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-scripting-common:1.8.20.
+     Required by:
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-scripting-compiler-impl-embeddable:1.8.20
+      > Could not resolve org.jetbrains.kotlin:kotlin-scripting-common:1.8.20.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-scripting-common/1.8.20/kotlin-scripting-common-1.8.20.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-scripting-common/1.8.20/kotlin-scripting-common-1.8.20.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-scripting-common:1.8.20.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-common/1.8.20/kotlin-scripting-common-1.8.20.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-common/1.8.20/kotlin-scripting-common-1.8.20.pom'.
+               > repo.maven.apache.org
+   > Could not resolve org.jetbrains.kotlin:kotlin-scripting-jvm:1.8.20.
+     Required by:
+         project :flutter_tts > org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20 > org.jetbrains.kotlin:kotlin-scripting-compiler-impl-embeddable:1.8.20
+      > Could not resolve org.jetbrains.kotlin:kotlin-scripting-jvm:1.8.20.
+         > Could not get resource 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-scripting-jvm/1.8.20/kotlin-scripting-jvm-1.8.20.pom'.
+            > Could not GET 'https://dl.google.com/dl/android/maven2/org/jetbrains/kotlin/kotlin-scripting-jvm/1.8.20/kotlin-scripting-jvm-1.8.20.pom'.
+               > dl.google.com
+      > Could not resolve org.jetbrains.kotlin:kotlin-scripting-jvm:1.8.20.
+         > Could not get resource 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-jvm/1.8.20/kotlin-scripting-jvm-1.8.20.pom'.
+            > Could not GET 'https://repo.maven.apache.org/maven2/org/jetbrains/kotlin/kotlin-scripting-jvm/1.8.20/kotlin-scripting-jvm-1.8.20.pom'.
+               > repo.maven.apache.org
+> Failed to notify project evaluation listener.
+   > java.lang.NullPointerException (no error message)
+   > java.lang.NullPointerException (no error message)
+> There are 2 more failures with identical causes.
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 14m 25s
+Running Gradle task 'assembleDebug'...                           1,967ms
+[!] Gradle threw an error while downloading artifacts from the network.
+Gradle task assembleDebug failed with exit code 1

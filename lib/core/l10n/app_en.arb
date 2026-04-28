@@ -45,6 +45,8 @@
   "otpTitle": "Enter OTP",
   "otpSubtitle": "We sent a 6-digit code to your number.",
   "verifyOtp": "Verify OTP",
+  "verifyAndContinue": "Verify & Continue",
+  "resendCode": "Resend Code",
   "invalidPhone": "Enter a valid 10-digit mobile number",
   "dpdpNotice": "Your data stays on your device.\nDPDP compliant · end-to-end encrypted.",
   "offlineBanner": "Offline mode — data saves locally"
