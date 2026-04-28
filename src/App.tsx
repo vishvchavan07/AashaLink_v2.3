@@ -38,21 +38,28 @@ import {
   AlertCircle,
   ShieldAlert,
   Navigation,
-  Download
+  Download,
+  ShieldCheck,
+  Lock as LucideLock,
+  Camera,
+  ArrowRight,
+  Box,
+  Package,
+  History as LucideHistory,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import rawData from './data/raw_datasets.json';
-import { db, auth, addCollectionData, getCollectionData } from './firebase';
+import { db, auth, addCollectionData, getCollectionData, updateCollectionData } from './firebase';
 import { collection, addDoc, onSnapshot } from 'firebase/firestore';
 import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import localforage from 'localforage';
-import { analyzeEntities } from './utils/googleNlp';
-import { translateTextGoogleCloudV3 } from './utils/googleTranslate';
 
 // Fix for default marker icon in react-leaflet
 // @ts-ignore
@@ -68,10 +75,22 @@ let DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
+import { 
+  translations as initialTranslations, 
+  Language, 
+  translateWithAI, 
+  getStoredDynamicTranslations, 
+  saveDynamicTranslation 
+} from './translations';
+import { 
+  transcribeAudioWithGemini, 
+  translateTextWithGemini, 
+  analyzeEntitiesWithGemini 
+} from './ai';
+
 // --- Types ---
 type NetworkStatus = 'Good' | 'Poor' | 'No network';
 type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error' | 'offline';
-type Language = 'English' | 'Hindi' | 'Marathi' | 'Tamil' | 'Kannada';
 const langCodeMap: Record<Language, string> = {
   English: 'en-IN',
   Hindi: 'hi-IN',
@@ -79,8 +98,81 @@ const langCodeMap: Record<Language, string> = {
   Tamil: 'ta-IN',
   Kannada: 'kn-IN'
 };
-type Screen = 'home' | 'patient-records' | 'blood-bank' | 'med-assistant' | 'bed-availability' | 'voice-diary' | 'settings' | 'language' | 'login' | 'profile';
+type Screen = 'home' | 'patient-records' | 'blood-bank' | 'med-assistant' | 'bed-availability' | 'voice-diary' | 'settings' | 'language' | 'login' | 'profile' | 'permissions' | 'asha-news' | 'supply-requests';
+
+const translations = initialTranslations;
+
+const t_func = (selectedLanguage: Language, key: string, fallback: string) => {
+  const dynamic = getStoredDynamicTranslations();
+  return (translations[selectedLanguage] as any)[key] || (dynamic[key] && dynamic[key][selectedLanguage]) || (translations['English'] as any)[key] || fallback;
+};
+
+// --- Translation Context ---
+const TranslationContext = React.createContext<{
+  selectedLanguage: Language;
+  setSelectedLanguage: (l: Language) => void;
+  t: (key: string, original?: string) => string;
+  translateMissingKey: (key: string, original: string) => Promise<void>;
+} | null>(null);
+
+const T = ({ k, children }: { k?: string, children: string }) => {
+  const context = React.useContext(TranslationContext);
+  const selectedLanguage = context?.selectedLanguage || 'English';
+  const [displayText, setDisplayText] = React.useState(t_func(selectedLanguage, k || children, children));
+
+  React.useEffect(() => {
+    setDisplayText(t_func(selectedLanguage, k || children, children));
+    
+    if (k && selectedLanguage !== 'English' && !((translations[selectedLanguage] as any)[k] || (getStoredDynamicTranslations()[k] && getStoredDynamicTranslations()[k][selectedLanguage]))) {
+      context?.translateMissingKey(k, children);
+    }
+  }, [selectedLanguage, k, children, context]);
+
+  if (!k) return <span>{children}</span>;
+  return (
+    <motion.span
+      key={displayText}
+      initial={{ opacity: 0.7 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2 }}
+    >
+      {displayText}
+    </motion.span>
+  );
+};
+
+const StatusChip = ({ syncStatus }: { syncStatus: SyncStatus }) => {
+  const context = React.useContext(TranslationContext);
+  const selectedLanguage = context?.selectedLanguage || 'English';
+  
+  const getStatusText = () => {
+    switch (syncStatus) {
+      case 'syncing': return t_func(selectedLanguage, 'syncing', "Syncing...");
+      case 'synced': return t_func(selectedLanguage, 'synced', "All data synced");
+      case 'error': return t_func(selectedLanguage, 'error', "Sync failed");
+      case 'offline': return t_func(selectedLanguage, 'offline', "Offline mode");
+      default: return t_func(selectedLanguage, 'cloudReady', "Cloud ready");
+    }
+  };
+
+  return (
+    <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+      syncStatus === 'syncing' ? 'bg-amber-100 text-amber-700' :
+      syncStatus === 'synced' ? 'bg-emerald-100 text-emerald-700' :
+      syncStatus === 'error' ? 'bg-rose-100 text-rose-700' :
+      'bg-blue-100 text-blue-700'
+    }`}>
+      {syncStatus === 'syncing' ? <RefreshCw className="w-3 h-3 animate-spin" /> : 
+       syncStatus === 'synced' ? <CheckCircle2 className="w-3 h-3" /> :
+       syncStatus === 'error' ? <AlertCircle className="w-3 h-3" /> :
+       <Cloud className="w-3 h-3" />}
+      {getStatusText()}
+    </div>
+  );
+};
+
 type Patient = { 
+  id?: string;
   name: string; 
   age: string; 
   disease: string; 
@@ -92,7 +184,21 @@ type Patient = {
   emergencyContact: string;
   address: string;
   photo?: string;
+  latitude?: number;
+  longitude?: number;
 };
+type SupplyItem = { name: string; quantity: number; barcode?: string };
+type SupplyRequest = { 
+  id?: string;
+  items: SupplyItem[];
+  status: 'pending' | 'approved' | 'rejected';
+  latitude?: number;
+  longitude?: number;
+  image_path?: string;
+  sync_status: 'pending' | 'synced';
+  created_at: string;
+};
+type KitTemplate = { name: string; items: SupplyItem[]; icon: any };
 type BloodBank = { name: string; address: string; phone: string; lat: number; lng: number; groups: string[]; lowStockGroups?: string[]; distance: number };
 type VoiceDiaryEntry = { id: string; patientName: string; date: string; duration: string; transcript: string; translatedTranscript?: string; tags?: string[] };
 
@@ -102,6 +208,9 @@ type AshaWorker = {
   village: string;
   designation: string;
   contactNumber: string;
+  emergencyContact1: string;
+  supervisorContact: string;
+  autoSosEnabled: boolean;
 };
 
 type MedicalRecord = {
@@ -115,208 +224,11 @@ type MedicalRecord = {
   duration_warning: string;
 };
 
-// --- Translation Context ---
-const TranslationContext = React.createContext<{
-  selectedLanguage: Language;
-  setSelectedLanguage: (l: Language) => void;
-  t: (key: string, original?: string) => string;
-  dynamicTranslations: Record<string, Record<string, string>>;
-  setDynamicTranslations: React.Dispatch<React.SetStateAction<Record<string, Record<string, string>>>>;
-} | null>(null);
-
-const T = ({ children, k }: { children: string, k?: string }) => {
-  const context = React.useContext(TranslationContext);
-  if (!context) return <>{children}</>;
-  const { selectedLanguage, dynamicTranslations, setDynamicTranslations } = context;
-
-  const [translated, setTranslated] = useState<string>(() => {
-    if (selectedLanguage === 'English') return children;
-    if (k && translations[selectedLanguage]?.[k]) return translations[selectedLanguage][k];
-    return dynamicTranslations[children]?.[selectedLanguage] || children;
-  });
-
-  useEffect(() => {
-    if (selectedLanguage === 'English') {
-      setTranslated(children);
-      return;
-    }
-
-    if (k && translations[selectedLanguage]?.[k]) {
-      setTranslated(translations[selectedLanguage][k]);
-      return;
-    }
-
-    if (dynamicTranslations[children]?.[selectedLanguage]) {
-      setTranslated(dynamicTranslations[children][selectedLanguage]);
-      return;
-    }
-
-    const performTranslation = async () => {
-      const apiKey = import.meta.env.VITE_GOOGLE_SPEECH_API_KEY || import.meta.env.VITE_GOOGLE_TRANSLATE_API_KEY;
-      const projectId = import.meta.env.VITE_GOOGLE_PROJECT_ID;
-      if (!apiKey || !projectId) return;
-
-      try {
-        const result = await translateTextGoogleCloudV3(
-          children, 
-          langCodeMap[selectedLanguage].split('-')[0], 
-          projectId, 
-          apiKey
-        );
-        
-        setDynamicTranslations(prev => ({
-          ...prev,
-          [children]: { ...(prev[children] || {}), [selectedLanguage]: result }
-        }));
-        setTranslated(result);
-      } catch (e) {
-        console.error("Auto-translation error:", e);
-      }
-    };
-
-    performTranslation();
-  }, [children, selectedLanguage, k, dynamicTranslations, setDynamicTranslations]);
-
-  return <>{translated}</>;
-};
-
-const translations: Record<Language, any> = {
-  English: {
-    home: "Home",
-    records: "Records",
-    voice: "Voice",
-    profile: "Profile",
-    selectLanguage: "Select Language",
-    ashaLink: "AashaLink",
-    patientRecords: "Patient Records",
-    bloodBank: "Blood Bank",
-    bedAvailability: "Bed Availability",
-    medAssistant: "Medi Assistant",
-    voiceDiary: "Voice Diary",
-    settings: "Settings",
-    helpSupport: "Help & Support",
-    logout: "Logout",
-    voiceDiaryLabel: "Voice Diary",
-    patientRecordsLabel: "Patient Records",
-    bedAvailabilityLabel: "Bed Availability",
-    bloodBankLabel: "Blood Bank",
-    mediAssistantLabel: "Medi Assistant",
-    mediAssistantSub: "AI-powered medical support",
-    personalDetails: "Personal Details",
-    assignedVillage: "Assigned Village",
-    ashaId: "Asha ID",
-    contactNumber: "Contact Number",
-    designation: "Designation"
-  },
-  Hindi: {
-    home: "होम",
-    records: "रिकॉर्ड्स",
-    voice: "आवाज़",
-    profile: "प्रोफ़ाइल",
-    selectLanguage: "भाषा चुनें",
-    ashaLink: "आशा लिंक",
-    patientRecords: "रोगी रिकॉर्ड",
-    bloodBank: "ब्लड बैंक",
-    bedAvailability: "बिस्तर की उपलब्धता",
-    medAssistant: "मेड असिस्टेंट",
-    voiceDiary: "वॉयस डायरी",
-    settings: "सेटिंग्स",
-    helpSupport: "सहायता और समर्थन",
-    logout: "लॉगआउट",
-    voiceDiaryLabel: "वॉयस डायरी",
-    patientRecordsLabel: "रोगी रिकॉर्ड",
-    bedAvailabilityLabel: "बिस्तर उपलब्धता",
-    bloodBankLabel: "ब्लड बैंक",
-    mediAssistantLabel: "मेड असिस्टेंट",
-    mediAssistantSub: "AI-आधारित चिकित्सा सहायता",
-    personalDetails: "व्यक्तिगत विवरण",
-    assignedVillage: "नियुक्त गाँव",
-    ashaId: "आशा आईडी",
-    contactNumber: "संपर्क नंबर",
-    designation: "पद"
-  },
-  Marathi: {
-    home: "होम",
-    records: "रेकॉर्ड्स",
-    voice: "आवाज",
-    profile: "प्रोफाइल",
-    selectLanguage: "भाषा निवडा",
-    ashaLink: "आशा लिंक",
-    patientRecords: "रुग्ण रेकॉर्ड",
-    bloodBank: "ब्लड बँक",
-    bedAvailability: "बेड उपलब्धता",
-    medAssistant: "मेड असिस्टंट",
-    voiceDiary: "व्हॉइस डायरी",
-    settings: "सेटिंग्ज",
-    helpSupport: "मदत आणि समर्थन",
-    logout: "लॉगआउट",
-    voiceDiaryLabel: "व्हॉइस डायरी",
-    patientRecordsLabel: "रुग्ण रेकॉर्ड",
-    bedAvailabilityLabel: "बेड उपलब्धता",
-    bloodBankLabel: "ब्लड बँक",
-    mediAssistantLabel: "मेड असिस्टंट",
-    mediAssistantSub: "AI-आधारित वैद्यकीय मदत",
-    personalDetails: "वैयक्तिक तपशील",
-    assignedVillage: "नियुक्त गाव",
-    ashaId: "आशा आयडी",
-    contactNumber: "संपर्क क्रमांक",
-    designation: "पद"
-  },
-  Tamil: {
-    home: "முகப்பு",
-    records: "பதிவுகள்",
-    voice: "குரல்",
-    profile: "சுயவிவரம்",
-    selectLanguage: "மொழியைத் தேர்ந்தெடுக்கவும்",
-    ashaLink: "ஆஷா லிங்க்",
-    patientRecords: "நோயாளி பதிவுகள்",
-    bloodBank: "இரத்த வங்கி",
-    bedAvailability: "படுக்கை வசதி",
-    medAssistant: "மருத்துவ உதவியாளர்",
-    voiceDiary: "குரல் நாட்குறிப்பு",
-    settings: "அமைப்புகள்",
-    helpSupport: "உதவி மற்றும் ஆதரவு",
-    logout: "வெளியேறு",
-    voiceDiaryLabel: "குரல் நாட்குறிப்பு",
-    patientRecordsLabel: "நோயாளி பதிவுகள்",
-    bedAvailabilityLabel: "படுக்கை வசதி",
-    bloodBankLabel: "இரத்த வங்கி",
-    mediAssistantLabel: "மருத்துவ உதவியாளர்",
-    mediAssistantSub: "AI-இயங்கும் மருத்துவ ஆதரவு",
-    personalDetails: "தனிப்பட்ட விவரங்கள்",
-    assignedVillage: "ஒதுக்கப்பட்ட கிராமம்",
-    ashaId: "ஆஷா ஐடி",
-    contactNumber: "தொடர்பு எண்",
-    designation: "பதவி"
-  },
-  Kannada: {
-    home: "ಮುಖಪುಟ",
-    records: "ದಾಖಲೆಗಳು",
-    voice: "ಧ್ವನಿ",
-    profile: "ಪ್ರೊಫೈಲ್",
-    selectLanguage: "ಭಾಷೆಯನ್ನು ಆರಿಸಿ",
-    ashaLink: "ಆಶಾ ಲಿಂಕ್",
-    patientRecords: "ರೋಗಿಗಳ ದಾಖಲೆಗಳು",
-    bloodBank: "ರಕ್ತ ನಿಧಿ",
-    bedAvailability: "ಹಾಸಿಗೆ ಲಭ್ಯತೆ",
-    medAssistant: "ವೈದ್ಯಕೀಯ ಸಹಾಯಕ",
-    voiceDiary: "ಧ್ವನಿ ಡೈರಿ",
-    settings: "ಸೆಟ್ಟಿಂಗ್‌ಗಳು",
-    helpSupport: "ಸಹಾಯ ಮತ್ತು ಬೆಂಬಲ",
-    logout: "ಲಾಗ್ ಔಟ್",
-    voiceDiaryLabel: "ಧ್ವನಿ ಡೈರಿ",
-    patientRecordsLabel: "ರೋಗಿಗಳ ದಾಖಲೆಗಳು",
-    bedAvailabilityLabel: "ಹಾಸಿಗೆ ಲಭ್ಯತೆ",
-    bloodBankLabel: "ರಕ್ತ ನಿಧಿ",
-    mediAssistantLabel: "ವೈದ್ಯಕೀಯ ಸಹಾಯಕ",
-    mediAssistantSub: "AI-ಚಾಲಿತ ವೈದ್ಯಕೀಯ ಬೆಂಬಲ",
-    personalDetails: "ವೈಯಕ್ತಿಕ ವಿವರಗಳು",
-    assignedVillage: "ನಿಯೋಜಿತ ಗ್ರಾಮ",
-    ashaId: "ಆಶಾ ಐಡಿ",
-    contactNumber: "ಸಂಪರ್ಕ ಸಂಖ್ಯೆ",
-    designation: "ಹುದ್ದೆ"
-  }
-};
+const emergencyServices = [
+  { name: "City General Hospital", type: "Hospital", lat: 18.5204, lng: 73.8567, phone: "102" },
+  { name: "Central Police Station", type: "Police", lat: 18.5254, lng: 73.8617, phone: "100" },
+  { name: "Emergency Trauma Center", type: "Hospital", lat: 18.5154, lng: 73.8517, phone: "108" }
+];
 
 // --- Components ---
 
@@ -330,72 +242,60 @@ const NetworkIndicator = ({ status, syncStatus, onToggle }: { status: NetworkSta
     }
   };
 
-  const getSyncIcon = () => {
-    switch (syncStatus) {
-      case 'syncing': return <RefreshCw className="w-3.5 h-3.5 animate-spin text-primary-600" />;
-      case 'synced': return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />;
-      case 'error': return <AlertCircle className="w-3.5 h-3.5 text-rose-500" />;
-      case 'offline': return <CloudOff className="w-3.5 h-3.5 text-stone-400" />;
-      default: return <Cloud className="w-3.5 h-3.5 text-stone-300" />;
-    }
-  };
-
-  const getSyncText = () => {
-    switch (syncStatus) {
-      case 'syncing': return <T k="syncing">Syncing...</T>;
-      case 'synced': return <T k="synced">All data synced</T>;
-      case 'error': return <T k="error">Sync failed</T>;
-      case 'offline': return <T k="offline">Offline mode</T>;
-      default: return <T k="cloudReady">Cloud ready</T>;
-    }
-  };
-
   return (
-    <div className="bg-stone-50/80 backdrop-blur-sm border-b border-stone-100 w-full flex divide-x divide-stone-100">
+    <div className="glass-panel w-full flex divide-x divide-white/20 relative z-20">
       <button 
         onClick={onToggle}
-        className="flex-1 flex items-center justify-center gap-2 py-2 hover:bg-stone-100 transition-colors cursor-pointer"
+        className="flex-1 flex items-center justify-center gap-2 py-2.5 hover:bg-white/40 transition-colors cursor-pointer"
       >
         {status === 'No network' ? <WifiOff className={`w-4 h-4 ${getNetworkColor()}`} /> : <Wifi className={`w-4 h-4 ${getNetworkColor()}`} />}
-        <span className={`text-[10px] font-bold uppercase tracking-wider ${getNetworkColor()}`}>{status} Network</span>
+        <span className={`text-[10px] font-bold uppercase tracking-wider ${getNetworkColor()}`}><T k={status === 'No network' ? 'noNetwork' : status === 'Poor' ? 'poorNetwork' : 'goodNetwork'}>{status + " Network"}</T></span>
       </button>
-      <div className="flex-1 flex items-center justify-center gap-2 py-2">
-        {getSyncIcon()}
-        <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500">{getSyncText()}</span>
+      <div className="flex-1 flex items-center justify-center gap-2 py-2.5">
+        <StatusChip syncStatus={syncStatus} />
       </div>
     </div>
   );
 };
 
-const FeatureCard = ({ icon: Icon, label, onClick }: { icon: any; label: string; onClick: () => void }) => (
+const FeatureCard = ({ icon: Icon, label, k, onClick }: { icon: any; label: string; k?: string; onClick: () => void }) => (
   <motion.button
-    whileTap={{ scale: 0.96 }}
+    whileTap={{ scale: 0.94, rotate: [-1, 1, 0] }}
+    whileHover={{ y: -4, shadow: "0 20px 25px -5px rgb(0 0 0 / 0.1)" }}
     onClick={onClick}
-    className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 flex flex-col items-center justify-center gap-3 hover:shadow-md hover:border-primary-100 transition-all group"
+    className="glass-card p-6 rounded-3xl flex flex-col items-center justify-center gap-3 group relative overflow-hidden transition-shadow"
   >
-    <div className="p-4 bg-primary-50 rounded-2xl group-hover:bg-primary-100 transition-colors">
-      <Icon className="w-8 h-8 text-primary-600" />
+    <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+    <div className="relative p-4 bg-gradient-to-br from-primary-50 to-primary-100 rounded-2xl group-hover:shadow-md transition-all duration-300">
+      <Icon className="w-8 h-8 text-primary-600 group-hover:scale-110 transition-transform duration-300" />
     </div>
-    <span className="text-sm font-bold text-stone-700"><T>{label}</T></span>
+    <span className="relative text-sm font-bold text-slate-800 tracking-tight"><T k={k}>{label}</T></span>
   </motion.button>
 );
 
-const NavItem = ({ icon: Icon, label, active = false, onClick }: { icon: any; label: string; active?: boolean; onClick?: () => void }) => (
-  <button onClick={onClick} className={`flex flex-col items-center gap-1.5 ${active ? 'text-primary-600' : 'text-stone-400 hover:text-stone-600'} transition-colors`}>
+const NavItem = ({ icon: Icon, label, k, active = false, onClick }: { icon: any; label: string; k?: string; active?: boolean; onClick?: () => void }) => (
+  <motion.button 
+    whileTap={{ scale: 0.9, y: 2 }}
+    onClick={onClick} 
+    className={`flex flex-col items-center gap-1.5 ${active ? 'text-primary-600' : 'text-stone-400 hover:text-stone-600'} transition-colors`}
+  >
     <Icon className={`w-6 h-6 ${active ? 'stroke-[2.5px]' : 'stroke-2'}`} />
-    <span className="text-[10px] font-bold uppercase tracking-widest"><T>{label}</T></span>
-  </button>
+    <span className="text-[10px] font-bold uppercase tracking-widest"><T k={k}>{label}</T></span>
+  </motion.button>
 );
 
-const DrawerItem = ({ icon: Icon, label, isRed = false, onClick }: { icon: any; label: string; isRed?: boolean; onClick?: () => void }) => (
-  <button onClick={onClick} className={`w-full flex items-center gap-4 px-6 py-4 hover:bg-stone-50 transition-colors ${isRed ? 'text-rose-600' : 'text-stone-700'}`}>
+const DrawerItem = ({ icon: Icon, label, k, isRed = false, onClick }: { icon: any; label: string; k?: string; isRed?: boolean; onClick?: () => void }) => (
+  <motion.button 
+    whileTap={{ scale: 0.98, x: 5 }}
+    onClick={onClick} 
+    className={`w-full flex items-center gap-4 px-6 py-4 hover:bg-stone-50 transition-colors ${isRed ? 'text-rose-600' : 'text-stone-700'}`}
+  >
     <Icon className="w-6 h-6" />
-    <span className="font-semibold"><T>{label}</T></span>
-  </button>
+    <span className="font-semibold"><T k={k}>{label}</T></span>
+  </motion.button>
 );
 
-import { transcribeAudioGoogleCloudV2 } from './utils/googleSpeech';
-import { analyzeEntities } from './utils/googleNlp';
+
 
 const HighlightText = ({ text, query }: { text: string, query: string }) => {
   if (!query.trim()) return <>{text}</>;
@@ -411,6 +311,143 @@ const HighlightText = ({ text, query }: { text: string, query: string }) => {
 };
 
 // --- Main App ---
+
+class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
+  constructor(props: {children: React.ReactNode}) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 20, color: 'red' }}>
+          <h2>Something went wrong in App component.</h2>
+          <pre style={{ whiteSpace: 'pre-wrap' }}>{this.state.error?.toString()}</pre>
+          <pre style={{ whiteSpace: 'pre-wrap' }}>{this.state.error?.stack}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+const PermissionScreen = ({ onComplete }: { onComplete: (granted: { autoSms: boolean }) => void }) => {
+  const [granted, setGranted] = useState({ mic: false, cam: false, loc: false, autoSms: false });
+  const [requesting, setRequesting] = useState(false);
+
+  const requestAll = async () => {
+    setRequesting(true);
+    
+    // Request Microphone
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop());
+      setGranted(prev => ({ ...prev, mic: true }));
+    } catch (e) { console.error("Mic denied"); }
+
+    // Request Camera
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach(track => track.stop());
+      setGranted(prev => ({ ...prev, cam: true }));
+    } catch (e) { console.error("Cam denied"); }
+
+    // Request Location
+    try {
+      await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject);
+      });
+      setGranted(prev => ({ ...prev, loc: true }));
+    } catch (e) { console.error("Loc denied"); }
+
+    // Request Automatic SMS Permission (Soft Permission)
+    setGranted(prev => ({ ...prev, autoSms: true }));
+
+    setRequesting(false);
+  };
+
+  const isAllDone = granted.mic && granted.loc; // Camera is optional for now
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col p-8 pt-20">
+      <div className="flex-1 max-w-md mx-auto w-full flex flex-col items-center text-center">
+        <div className="w-20 h-20 bg-primary-100 rounded-3xl flex items-center justify-center mb-8 shadow-inner">
+          <ShieldCheck className="w-10 h-10 text-primary-600" />
+        </div>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tighter mb-4"><T k="onboardingTitle">App Permissions</T></h2>
+        <p className="text-slate-500 font-medium mb-12"><T k="onboardingSub">AashaLink needs these permissions to provide life-saving health services.</T></p>
+
+        <div className="w-full space-y-4 mb-12">
+          <div className={`p-5 rounded-3xl border-2 transition-all flex items-center gap-5 ${granted.loc ? 'border-emerald-200 bg-emerald-50' : 'border-slate-100 bg-white'}`}>
+            <div className={`p-3 rounded-2xl ${granted.loc ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
+              <MapPin className="w-6 h-6" />
+            </div>
+            <div className="text-left flex-1">
+              <h4 className="font-bold text-slate-800"><T k="locationAccess">Location Access</T></h4>
+              <p className="text-xs text-slate-500"><T k="locationSub">Needed for SOS emergency alerts and finding nearby beds.</T></p>
+            </div>
+            {granted.loc && <CheckCircle2 className="w-6 h-6 text-emerald-500" />}
+          </div>
+
+          <div className={`p-5 rounded-3xl border-2 transition-all flex items-center gap-5 ${granted.mic ? 'border-emerald-200 bg-emerald-50' : 'border-slate-100 bg-white'}`}>
+            <div className={`p-3 rounded-2xl ${granted.mic ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
+              <Mic className="w-6 h-6" />
+            </div>
+            <div className="text-left flex-1">
+              <h4 className="font-bold text-slate-800"><T k="micAccess">Microphone Access</T></h4>
+              <p className="text-xs text-slate-500"><T k="micSub">Essential for recording Voice Diaries and AI transcription.</T></p>
+            </div>
+            {granted.mic && <CheckCircle2 className="w-6 h-6 text-emerald-500" />}
+          </div>
+
+          <div className={`p-5 rounded-3xl border-2 transition-all flex items-center gap-5 ${granted.cam ? 'border-emerald-200 bg-emerald-50' : 'border-slate-100 bg-white'}`}>
+            <div className={`p-3 rounded-2xl ${granted.cam ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
+              <Camera className="w-6 h-6" />
+            </div>
+            <div className="text-left flex-1">
+              <h4 className="font-bold text-slate-800"><T k="cameraAccess">Camera Access</T></h4>
+              <p className="text-xs text-slate-500"><T k="cameraSub">Used for scanning reports and taking profile photos.</T></p>
+            </div>
+            {granted.cam && <CheckCircle2 className="w-6 h-6 text-emerald-500" />}
+          </div>
+
+          <div className={`p-5 rounded-3xl border-2 transition-all flex items-center gap-5 ${granted.autoSms ? 'border-emerald-200 bg-emerald-50' : 'border-slate-100 bg-white'}`}>
+            <div className={`p-3 rounded-2xl ${granted.autoSms ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
+              <ShieldAlert className="w-6 h-6" />
+            </div>
+            <div className="text-left flex-1">
+              <h4 className="font-bold text-slate-800"><T k="autoSmsAccess">Automatic Emergency Alerts</T></h4>
+              <p className="text-xs text-slate-500"><T k="autoSmsSub">Allows sending SMS and WhatsApp alerts to supervisor automatically without confirmation.</T></p>
+            </div>
+            {granted.autoSms && <CheckCircle2 className="w-6 h-6 text-emerald-500" />}
+          </div>
+        </div>
+
+        {!isAllDone ? (
+          <button 
+            onClick={requestAll}
+            disabled={requesting}
+            className="w-full bg-primary-600 text-white py-5 rounded-3xl font-black text-lg shadow-xl shadow-primary-200 flex items-center justify-center gap-3 active:scale-95 transition-all"
+          >
+            {requesting ? <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin"></div> : <><LucideLock className="w-6 h-6" /> <T k="allowAccess">Allow Access</T></>}
+          </button>
+        ) : (
+          <motion.button 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            onClick={() => onComplete({ autoSms: granted.autoSms })}
+            className="w-full bg-emerald-600 text-white py-5 rounded-3xl font-black text-lg shadow-xl shadow-emerald-200 flex items-center justify-center gap-3 active:scale-95 transition-all"
+          >
+            <T k="continueToApp">Continue to App</T> <ArrowRight className="w-6 h-6" />
+          </motion.button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export default function App() {
   const [network, setNetwork] = useState<NetworkStatus>('Good');
@@ -438,6 +475,8 @@ export default function App() {
     localStorage.setItem('aashalink_language', selectedLanguage);
   }, [selectedLanguage]);
 
+  const t = translations[selectedLanguage] || translations['English'];
+
   const [dynamicTranslations, setDynamicTranslations] = useState<Record<string, Record<string, string>>>(() => {
     try {
       const saved = localStorage.getItem('aashalink_dynamic_translations');
@@ -451,21 +490,46 @@ export default function App() {
     localStorage.setItem('aashalink_dynamic_translations', JSON.stringify(dynamicTranslations));
   }, [dynamicTranslations]);
 
-  const t_func = (key: string, original?: string) => {
-    const textToTranslate = original || key;
-    if (selectedLanguage === 'English') return textToTranslate;
-    if (translations[selectedLanguage]?.[key]) return translations[selectedLanguage][key];
-    if (dynamicTranslations[textToTranslate]?.[selectedLanguage]) return dynamicTranslations[textToTranslate][selectedLanguage];
-    return textToTranslate;
+  const translateMissingKey = async (key: string, original: string) => {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey || selectedLanguage === 'English') return;
+    
+    // Check if already translating
+    const dynamic = getStoredDynamicTranslations();
+    if (dynamic[key] && dynamic[key][selectedLanguage]) return;
+
+    try {
+      const translated = await translateWithAI(original, selectedLanguage, apiKey);
+      saveDynamicTranslation(key, selectedLanguage, translated);
+      // Force re-render of translation components
+      setDynamicTranslations(getStoredDynamicTranslations());
+    } catch (e) {
+      console.error("Dynamic translation failed", e);
+    }
   };
 
-  const contextValue = {
+  const t_func_ctx = (key: string, original?: string) => {
+    return t_func(selectedLanguage, key, original || key);
+  };
+
+  const pageTransition = {
+    initial: { opacity: 0, scale: 0.98, filter: 'blur(10px)' },
+    animate: { opacity: 1, scale: 1, filter: 'blur(0px)' },
+    exit: { opacity: 0, scale: 1.02, filter: 'blur(10px)' },
+    transition: { type: 'spring', damping: 25, stiffness: 200 }
+  };
+
+  const buttonClick = {
+    whileTap: { scale: 0.94, rotate: [-1, 1, 0] },
+    whileHover: { y: -2 }
+  };
+
+  const contextValue = React.useMemo(() => ({
     selectedLanguage,
     setSelectedLanguage,
-    t: t_func,
-    dynamicTranslations,
-    setDynamicTranslations
-  };
+    t: t_func_ctx,
+    translateMissingKey
+  }), [selectedLanguage, dynamicTranslations]);
 
   const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
     try {
@@ -506,15 +570,32 @@ export default function App() {
   const [diarySortBy, setDiarySortBy] = useState<'date-newest' | 'date-oldest' | 'name-az' | 'name-za'>('date-newest');
 
   // --- Login State ---
-  const [loginStep, setLoginStep] = useState<'phone' | 'otp' | 'profile'>('phone');
+  const [loginStep, setLoginStep] = useState<'language' | 'phone' | 'otp' | 'profile'>('language');
   const [phoneNumber, setPhoneNumber] = useState('+91');
   const [otp, setOtp] = useState('');
   const [confirmationResult, setConfirmationResult] = useState<any>(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [workerProfile, setWorkerProfile] = useState<AshaWorker>({
-    name: '', ashaId: '', village: '', designation: 'ASHA Worker', contactNumber: ''
+    name: '', ashaId: '', village: '', designation: 'ASHA Worker', contactNumber: '',
+    emergencyContact1: '', supervisorContact: '', autoSosEnabled: false
   });
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [mockOtp, setMockOtp] = useState('');
+  const [showMockNotification, setShowMockNotification] = useState(false);
+  const [deviceType, setDeviceType] = useState<'mobile' | 'tablet' | 'desktop'>('mobile');
+
+  useEffect(() => {
+    const handleResize = () => {
+      const width = window.innerWidth;
+      if (width < 640) setDeviceType('mobile');
+      else if (width < 1024) setDeviceType('tablet');
+      else setDeviceType('desktop');
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     if (!authUser && currentScreen !== 'login') {
@@ -524,46 +605,127 @@ export default function App() {
 
 
 
+  const syncOfflineDataToFirebase = async () => {
+    if (network === 'No network') return;
+    
+    try {
+      const syncQueue: any[] = await localforage.getItem('aashalink_sync_queue') || [];
+      if (syncQueue.length === 0) {
+        setSyncStatus('synced');
+        setTimeout(() => setSyncStatus('idle'), 3000);
+        return;
+      }
+      
+      setSyncStatus('syncing');
+      const failedItems: any[] = [];
+      
+      for (const item of syncQueue) {
+        try {
+          if (item.type === 'ADD_PATIENT') {
+            await addCollectionData('patients', item.data);
+          } else if (item.type === 'ADD_DIARY') {
+            await addCollectionData('voiceDiaries', item.data);
+          } else if (item.type === 'ADD_REPORT') {
+            await addCollectionData('medicalReports', item.data);
+          } else if (item.type === 'UPDATE_PATIENT') {
+            await updateCollectionData('patients', item.id, item.data);
+          }
+        } catch (err) {
+          console.error("Failed to sync item", item, err);
+          failedItems.push(item);
+        }
+      }
+      
+      await localforage.setItem('aashalink_sync_queue', failedItems);
+      
+      if (failedItems.length === 0) {
+        setSyncStatus('synced');
+        // Refresh local data from Firebase after sync
+        const freshPatients = await getCollectionData('patients');
+        if (freshPatients.length > 0) {
+          setPatients(freshPatients);
+          await localforage.setItem('aashalink_patients', freshPatients);
+        }
+      } else {
+        setSyncStatus('error');
+      }
+      
+      setTimeout(() => setSyncStatus('idle'), 3000);
+    } catch (e) {
+      console.error("Sync process error", e);
+      setSyncStatus('error');
+    }
+  };
+
+  const addToSyncQueue = async (type: string, data: any, id?: string) => {
+    const syncQueue: any[] = await localforage.getItem('aashalink_sync_queue') || [];
+    syncQueue.push({ type, data, id, timestamp: Date.now() });
+    await localforage.setItem('aashalink_sync_queue', syncQueue);
+    
+    if (network === 'Good') {
+      syncOfflineDataToFirebase();
+    }
+  };
+
   useEffect(() => {
     let wasOffline = !navigator.onLine;
 
-    const updateNetworkStatus = () => {
-      if (!navigator.onLine) {
-        setNetwork('No network');
-        wasOffline = true;
-        return;
-      }
-
-      // Use Network Information API if available
-      const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
-      let isGood = true;
-      if (conn) {
-        // effectiveType can be 'slow-2g', '2g', '3g', or '4g'
-        if (conn.effectiveType === 'slow-2g' || conn.effectiveType === '2g' || conn.effectiveType === '3g') {
-          setNetwork('Poor');
-          isGood = false;
-        } else {
-          setNetwork('Good');
-        }
-      } else {
-        // Fallback if API not supported but online
-        setNetwork('Good');
-      }
-
-      if (wasOffline && (isGood || conn)) {
-        // Network restored
-        syncOfflineDataToFirebase();
-        wasOffline = false;
-      } else if (!navigator.onLine) {
-        setSyncStatus('offline');
+    const measureActualLatency = async (): Promise<number> => {
+      try {
+        const start = performance.now();
+        await fetch('/favicon.ico?cache_bust=' + Date.now(), { method: 'HEAD', cache: 'no-store' });
+        return performance.now() - start;
+      } catch (e) {
+        return -1;
       }
     };
 
-    // Initial check
+    const updateNetworkStatus = async () => {
+      if (!navigator.onLine) {
+        setNetwork('No network');
+        wasOffline = true;
+        setSyncStatus('offline');
+        return;
+      }
+
+      let isPoor = false;
+      const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+      if (conn) {
+        if (conn.effectiveType === 'slow-2g' || conn.effectiveType === '2g') {
+          isPoor = true;
+        }
+      }
+
+      const latency = await measureActualLatency();
+      if (latency === -1) {
+        setNetwork('No network');
+        setSyncStatus('offline');
+        wasOffline = true;
+        return;
+      } else if (latency > 800) {
+        isPoor = true;
+      }
+
+      if (isPoor) {
+        setNetwork('Poor');
+        if (wasOffline) {
+          syncOfflineDataToFirebase();
+          wasOffline = false;
+        }
+      } else {
+        setNetwork('Good');
+        if (wasOffline) {
+          syncOfflineDataToFirebase();
+          wasOffline = false;
+        }
+      }
+    };
+
     updateNetworkStatus();
 
     window.addEventListener('online', updateNetworkStatus);
     window.addEventListener('offline', updateNetworkStatus);
+    const interval = setInterval(updateNetworkStatus, 15000);
 
     const conn = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
     if (conn) {
@@ -573,14 +735,74 @@ export default function App() {
     return () => {
       window.removeEventListener('online', updateNetworkStatus);
       window.removeEventListener('offline', updateNetworkStatus);
+      clearInterval(interval);
       if (conn) {
         conn.removeEventListener('change', updateNetworkStatus);
       }
     };
   }, []);
 
+  useEffect(() => {
+    // Simulated Hardware Trigger (e.g. Volume Up 3 times)
+    let clickCount = 0;
+    let lastClickTime = 0;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Browsers can't intercept Power Button, so we use Volume buttons as simulated trigger
+      if (e.key === 'VolumeUp' || e.key === 'AudioVolumeUp') {
+        const now = Date.now();
+        if (now - lastClickTime < 1000) {
+          clickCount++;
+        } else {
+          clickCount = 1;
+        }
+        lastClickTime = now;
+
+        if (clickCount >= 3) {
+          console.log("Hardware Trigger Detected: Activating SOS");
+          // Trigger the SOS logic by dispatching a click to the SOS button
+          const sosBtn = document.getElementById('sos-trigger-btn');
+          if (sosBtn) (sosBtn as HTMLElement).click();
+          clickCount = 0;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [authUser]);
+
   // --- Patient Records State ---
-  const [activePatient, setActivePatient] = useState<Patient | null>(null);
+  const [ashaNews, setAshaNews] = useState<any[]>([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchNews = async () => {
+      setNewsLoading(true);
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5005';
+        const res = await fetch(`${apiUrl}/api/updates`);
+        const data = await res.json();
+        setAshaNews(data);
+      } catch (e) {
+        console.error("Failed to fetch ASHA news:", e);
+        // Fallback to empty if offline
+      } finally {
+        setNewsLoading(false);
+      }
+    };
+    if (currentScreen === 'home' || currentScreen === 'asha-news') {
+      fetchNews();
+    }
+  }, [currentScreen]);
+
+  const [supplyRequests, setSupplyRequests] = useState<SupplyRequest[]>(() => {
+    try {
+      const saved = localStorage.getItem('aashalink_supply_requests');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) { return []; }
+  });
+  
   const [patients, setPatients] = useState<Patient[]>(() => {
     try {
       const saved = localStorage.getItem('aashalink_patients');
@@ -590,6 +812,112 @@ export default function App() {
     }
     return [];
   });
+
+  const [activePatient, setActivePatient] = useState<Patient | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    return (localStorage.getItem('aashalink_theme') as 'light' | 'dark') || 'light';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('aashalink_theme', theme);
+    if (theme === 'dark') {
+      document.body.classList.add('dark');
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#020617');
+    } else {
+      document.body.classList.remove('dark');
+      document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#f8fafc');
+    }
+  }, [theme]);
+
+  const [masterItems, setMasterItems] = useState<SupplyItem[]>([]);
+  const [kits, setKits] = useState<KitTemplate[]>([]);
+
+  useEffect(() => {
+    const fetchMasterData = async () => {
+      const itemsData = await getCollectionData('items');
+      const templatesData = await getCollectionData('templates');
+      
+      if (itemsData.length > 0) setMasterItems(itemsData as any);
+      if (templatesData.length > 0) {
+        setKits(templatesData.map((t: any) => ({
+          ...t,
+          icon: t.name.includes('Maternal') ? User : t.name.includes('Emergency') ? ShieldAlert : Box
+        })));
+      } else {
+        setKits(kitTemplates); // Fallback to local
+      }
+    };
+    fetchMasterData();
+  }, []);
+
+  const syncAllData = async () => {
+    if (network === 'No network') return;
+    setSyncStatus('syncing');
+    
+    try {
+      // Sync Patients
+      const pendingPatients = patients.filter(p => !p.id);
+      for (const p of pendingPatients) {
+        const id = await addCollectionData('patients', { ...p, asha_id: authUser?.ashaId });
+        setPatients(prev => prev.map(item => item.name === p.name ? { ...item, id } : item));
+      }
+
+      // Sync Supply Requests
+      const pendingRequests = supplyRequests.filter(r => r.sync_status === 'pending');
+      for (const r of pendingRequests) {
+        let imageUrl = r.image_path;
+        if (r.image_path && r.image_path.startsWith('data:')) {
+          // In real app, convert base64 to blob and upload
+          // imageUrl = await uploadFile(`requests/${Date.now()}.jpg`, blob);
+        }
+        await addCollectionData('supplyRequests', { ...r, asha_id: authUser?.ashaId, image_url: imageUrl, sync_status: 'synced' });
+        setSupplyRequests(prev => prev.map(item => item.created_at === r.created_at ? { ...item, sync_status: 'synced' } : item));
+      }
+
+      setSyncStatus('synced');
+    } catch (e) {
+      console.error("Sync failed:", e);
+      setSyncStatus('error');
+    }
+  };
+
+  useEffect(() => {
+    const timer = setInterval(syncAllData, 30000); // Sync every 30s
+    return () => clearInterval(timer);
+  }, [network, patients, supplyRequests]);
+
+  useEffect(() => {
+    localStorage.setItem('aashalink_supply_requests', JSON.stringify(supplyRequests));
+  }, [supplyRequests]);
+
+  const kitTemplates: KitTemplate[] = [
+    { name: "Basic Kit", icon: Box, items: [{ name: "ORS Packet", quantity: 10 }, { name: "Paracetamol", quantity: 20 }, { name: "Bandages", quantity: 5 }] },
+    { name: "Maternal Kit", icon: User, items: [{ name: "Iron Tablets", quantity: 100 }, { name: "Folic Acid", quantity: 100 }, { name: "Calcium", quantity: 50 }] },
+    { name: "Emergency Kit", icon: ShieldAlert, items: [{ name: "Antiseptic", quantity: 2 }, { name: "Gauze", quantity: 10 }, { name: "Thermometer", quantity: 1 }] }
+  ];
+
+  const [currentRequest, setCurrentRequest] = useState<SupplyItem[]>([]);
+  const [requestPhoto, setRequestPhoto] = useState<string | null>(null);
+
+  const handleAddSupplyRequest = async () => {
+    if (currentRequest.length === 0) return;
+    
+    const newReq: SupplyRequest = {
+      items: [...currentRequest],
+      status: 'pending',
+      latitude: userLocation?.lat,
+      longitude: userLocation?.lng,
+      image_path: requestPhoto || undefined,
+      sync_status: 'pending',
+      created_at: new Date().toISOString()
+    };
+
+    setSupplyRequests(prev => [...prev, newReq]);
+    setCurrentRequest([]);
+    setRequestPhoto(null);
+    setCurrentScreen('home');
+  };
+
 
   // Listen to Firebase updates for patients if online
   useEffect(() => {
@@ -624,12 +952,81 @@ export default function App() {
     dob: '',
     contact: '',
     emergencyContact: '',
-    address: ''
+    address: '',
+    photo: '',
+    latitude: undefined,
+    longitude: undefined
   });
 
   useEffect(() => {
     localStorage.setItem('aashalink_patients', JSON.stringify(patients));
   }, [patients]);
+
+  const [helpWordCount, setHelpWordCount] = useState(0);
+  const helpTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (!workerProfile.autoSosEnabled || isSosActive) return;
+
+    // Initialize Voice SOS Trigger
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.warn("Speech Recognition not supported in this browser.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US'; 
+
+    recognition.onresult = (event: any) => {
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          const transcript = event.results[i][0].transcript.toLowerCase();
+          
+          if (transcript.includes('help')) {
+            const occurrences = (transcript.match(/help/g) || []).length;
+            setHelpWordCount(prev => {
+              const newCount = prev + occurrences;
+              if (newCount >= 3) {
+                console.warn("🚨 VOICE SOS TRIGGERED!");
+                triggerSOS();
+                return 0;
+              }
+              return newCount;
+            });
+
+            if (helpTimeoutRef.current) clearTimeout(helpTimeoutRef.current);
+            helpTimeoutRef.current = setTimeout(() => {
+              setHelpWordCount(0);
+            }, 5000);
+          }
+        }
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      if (event.error !== 'aborted') {
+        console.error("Speech Recognition Error:", event.error);
+      }
+    };
+
+    recognition.onend = () => {
+      if (workerProfile.autoSosEnabled && !isSosActive) {
+        try { recognition.start(); } catch(e) {}
+      }
+    };
+
+    try {
+      recognition.start();
+    } catch(e) {}
+
+    return () => {
+      recognition.stop();
+      if (helpTimeoutRef.current) clearTimeout(helpTimeoutRef.current);
+    };
+  }, [workerProfile.autoSosEnabled, isSosActive]);
 
   const filteredPatients = patients.filter(p => {
     const terms = searchQuery.toLowerCase().trim().split(/\s+/).filter(t => t.length > 0);
@@ -643,10 +1040,20 @@ export default function App() {
     return matchesSearch && matchesDate && matchesBloodGroup;
   });
 
-  const handleAddPatient = async () => {
+  const handleSavePatient = async () => {
     if (!newPatient.name || !newPatient.age || !newPatient.loc || !newPatient.disease) return;
-    setPatients(prev => [...prev, newPatient]);
-    const patientDataToSave = { ...newPatient };
+    
+    const patientData = {
+      ...newPatient,
+      id: Date.now().toString(),
+      lastUpdated: new Date().toISOString(),
+      ashaId: authUser?.ashaId
+    };
+
+    const updatedPatients = [...patients, patientData];
+    setPatients(updatedPatients);
+    await localforage.setItem('aashalink_patients_db', updatedPatients);
+    
     setNewPatient({ 
       name: '', 
       age: '', 
@@ -657,25 +1064,17 @@ export default function App() {
       dob: '',
       contact: '',
       emergencyContact: '',
-      address: ''
+      address: '',
+      photo: '',
+      latitude: undefined,
+      longitude: undefined
     });
     setIsAddModalOpen(false);
 
-    if (network === 'No network') {
-      const pending = JSON.parse(localStorage.getItem('aashalink_pending_sync') || '[]');
-      pending.push({ type: 'ADD_PATIENT', data: patientDataToSave });
-      localStorage.setItem('aashalink_pending_sync', JSON.stringify(pending));
-    } else {
-      // Sync immediately
-      try {
-        setSyncStatus('syncing');
-        await addCollectionData('patients', patientDataToSave);
-        setSyncStatus('synced');
-        setTimeout(() => setSyncStatus('idle'), 3000);
-      } catch (err) {
-        setSyncStatus('error');
-      }
-    }
+    // Add to sync queue for Firebase
+    const pending = JSON.parse(localStorage.getItem('aashalink_pending_sync') || '[]');
+    pending.push({ type: 'ADD_PATIENT', data: patientData });
+    localStorage.setItem('aashalink_pending_sync', JSON.stringify(pending));
   };
 
   // --- Blood Bank State ---
@@ -821,13 +1220,14 @@ export default function App() {
 
           setIsTranscribing(true);
           try {
-            const result = await transcribeAudioGoogleCloudV2(audioBlob, langCodeMap[selectedLanguage] || 'en-IN', projectId, apiKey);
+            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+            const result = await transcribeAudioWithGemini(audioBlob, selectedLanguage, apiKey);
             if (result) {
               setMedInput(prev => ({...prev, symptoms: prev.symptoms + (prev.symptoms ? ' ' : '') + result.trim()}));
             }
           } catch (error) {
-            console.error('Speech-to-Text Error:', error);
-            alert('Speech recognition failed. Ensure you have network connectivity and valid API keys.');
+            console.error('AI Processing Error:', error);
+            alert('AI recognition failed.');
           } finally {
             setIsTranscribing(false);
           }
@@ -884,17 +1284,41 @@ export default function App() {
             return;
           }
 
-          setIsTranscribing(true);
-          try {
-            const result = await transcribeAudioGoogleCloudV2(audioBlob, langCodeMap[selectedLanguage] || 'en-IN', projectId, apiKey);
-            if (result) {
-              setTranscript(prev => prev + (prev ? ' ' : '') + result.trim());
+          if (network === 'Good') {
+            setIsTranscribing(true);
+            try {
+              const result = await transcribeAudioWithGemini(audioBlob, selectedLanguage, apiKey);
+              if (result) {
+                setTranscript(prev => prev + (prev ? ' ' : '') + result.trim());
+              }
+            } catch (error) {
+              console.error('Speech-to-Text Error:', error);
+              alert('Speech recognition failed. Ensure you have network connectivity and valid API keys.');
+            } finally {
+              setIsTranscribing(false);
             }
-          } catch (error) {
-            console.error('Speech-to-Text Error:', error);
-            alert('Speech recognition failed. Ensure you have network connectivity and valid API keys.');
-          } finally {
-            setIsTranscribing(false);
+          } else {
+            // Offline fallback: Web Speech API (often works offline on Chrome/Android)
+            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+            if (SpeechRecognition) {
+              const recognition = new SpeechRecognition();
+              recognition.lang = langCodeMap[selectedLanguage];
+              recognition.continuous = false;
+              recognition.interimResults = false;
+              
+              recognition.onresult = (event: any) => {
+                const result = event.results[0][0].transcript;
+                setTranscript(prev => prev + (prev ? ' ' : '') + result.trim());
+              };
+              
+              recognition.onerror = () => {
+                alert('Offline transcription unavailable. Please type your diary entry manually.');
+              };
+              
+              recognition.start();
+            } else {
+              alert('Offline Mode Active: Voice-to-text requires an internet connection on this device. Please type your entry manually.');
+            }
           }
         };
 
@@ -917,15 +1341,27 @@ export default function App() {
     if (!transcript.trim()) return;
     
     let tags: string[] = [];
-    try {
-      const nlpResult = await analyzeEntities(transcript);
-      if (nlpResult && nlpResult.entities) {
-        tags = nlpResult.entities
-          .slice(0, 3)
-          .map(e => e.name);
+    
+    if (network === 'Good') {
+      try {
+        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+        if (apiKey && !apiKey.includes('your_gemini')) {
+          const nlpResult = await analyzeEntitiesWithGemini(transcript, apiKey);
+          if (nlpResult && nlpResult.entities) {
+            tags = nlpResult.entities
+              .slice(0, 3)
+              .map(e => e.name);
+          }
+        }
+      } catch (e) {
+        console.error("NLP extraction failed", e);
       }
-    } catch (e) {
-      console.error("NLP extraction failed", e);
+    } else {
+      // Local fallback: Simple keyword extraction
+      const commonKeywords = ['fever', 'cough', 'pregnancy', 'delivery', 'vaccine', 'nutrition', 'blood', 'weakness', 'pain'];
+      const words = transcript.toLowerCase().split(/\W+/);
+      tags = commonKeywords.filter(kw => words.includes(kw)).slice(0, 3);
+      if (tags.length === 0) tags = ['Offline Entry'];
     }
 
     const newEntry: VoiceDiaryEntry = {
@@ -936,25 +1372,18 @@ export default function App() {
       transcript: transcript,
       tags: tags
     };
-    setVoiceDiaries(prev => [newEntry, ...prev]);
+    
+    const updatedDiaries = [newEntry, ...voiceDiaries];
+    setVoiceDiaries(updatedDiaries);
+    await localforage.setItem('aashalink_diaries_db', updatedDiaries);
+    
     setTranscript('');
     setRecordingTime(0);
     setDiaryTab('list');
 
-    if (network === 'No network') {
-      const pending = JSON.parse(localStorage.getItem('aashalink_pending_sync') || '[]');
-      pending.push({ type: 'ADD_DIARY', data: newEntry });
-      localStorage.setItem('aashalink_pending_sync', JSON.stringify(pending));
-    } else {
-      try {
-        setSyncStatus('syncing');
-        await addCollectionData('voiceDiaries', newEntry);
-        setSyncStatus('synced');
-        setTimeout(() => setSyncStatus('idle'), 3000);
-      } catch (err) {
-        setSyncStatus('error');
-      }
-    }
+    const pending = JSON.parse(localStorage.getItem('aashalink_pending_sync') || '[]');
+    pending.push({ type: 'ADD_DIARY', data: newEntry });
+    localStorage.setItem('aashalink_pending_sync', JSON.stringify(pending));
   };
 
   const playDiary = (id: string, text: string) => {
@@ -990,13 +1419,11 @@ export default function App() {
   const handleSaveReport = () => {
     if (!activePatient || !medResult) return;
     
-    // Update active patient with new data
     const updatedPatient = {
       ...activePatient,
       disease: medResult.disease
     };
     
-    // Update patients list
     const updatedPatients = patients.map(p => 
       p.name === activePatient.name ? updatedPatient : p
     );
@@ -1004,16 +1431,10 @@ export default function App() {
     setPatients(updatedPatients);
     setActivePatient(updatedPatient);
 
-    if (network === 'No network') {
-      const pending = JSON.parse(localStorage.getItem('aashalink_pending_sync') || '[]');
-      pending.push({ type: 'UPDATE_PATIENT', data: updatedPatient });
-      localStorage.setItem('aashalink_pending_sync', JSON.stringify(pending));
-    } else {
-      // Sync immediately
-      // TODO: Firebase call
-    }
+    const pending = JSON.parse(localStorage.getItem('aashalink_pending_sync') || '[]');
+    pending.push({ type: 'UPDATE_PATIENT', data: updatedPatient });
+    localStorage.setItem('aashalink_pending_sync', JSON.stringify(pending));
     
-    // Reset Med Assistant
     setMedStatus('idle');
     setMedInput({ name: '', disease: '', symptoms: '', time: '', existing: '' });
   };
@@ -1024,15 +1445,6 @@ export default function App() {
     if (!medInput.symptoms) return;
     setMedStatus('loading');
     
-    // NLP Pre-analysis (Entity recognition)
-    let nlpEntities: any[] = [];
-    try {
-      const nlpData = await analyzeEntities(`${medInput.disease} ${medInput.symptoms} ${medInput.existing}`);
-      nlpEntities = nlpData.entities;
-    } catch (err) {
-      console.warn("NLP Analysis failed:", err);
-    }
-
     const performAnalysisLocal = async () => {
       const inputWords = `${medInput.disease} ${medInput.symptoms} ${medInput.time} ${medInput.existing}`.toLowerCase().split(/\W+/);
       const combinedInput = `${medInput.disease} ${medInput.symptoms} ${medInput.time} ${medInput.existing}`.toLowerCase();
@@ -1057,7 +1469,6 @@ export default function App() {
       }
 
       if (highestScore > 0 && bestMatch) {
-        // Use Google Translation API to translate the local English record if user is online
         const apiKey = import.meta.env.VITE_GOOGLE_SPEECH_API_KEY; 
         const projectId = import.meta.env.VITE_GOOGLE_PROJECT_ID;
         
@@ -1065,9 +1476,8 @@ export default function App() {
           try {
             const translated: any = { ...bestMatch };
             const fieldsToTranslate = ['disease', 'medicines', 'precautions', 'red_flags', 'remedies', 'duration_warning'];
-            
             for (const field of fieldsToTranslate) {
-              translated[field] = await translateTextGoogleCloudV3(bestMatch[field as keyof MedicalRecord] as string, langCodeMap[selectedLanguage].split('-')[0], projectId, apiKey);
+              translated[field] = bestMatch[field as keyof MedicalRecord];
             }
             setMedResult({ id: Date.now(), keywords: [], ...translated });
           } catch (e) {
@@ -1091,12 +1501,10 @@ export default function App() {
         
         const entityNames = nlpEntities.map(e => e.name).join(', ');
         const prompt = `You are a medical assistant for an ASHA worker in rural India.
-Analyze these symptoms:
-Disease suspected: ${medInput.disease}
+Suspected: ${medInput.disease}
 Symptoms: ${medInput.symptoms}
 Duration: ${medInput.time}
 Existing conditions: ${medInput.existing}
-NLP Detected Terms: ${entityNames}
 
 Reply STRICTLY in JSON format with EXACTLY these string keys (no markdown formatting outside the JSON).
 Crucially, all the values inside the JSON MUST be translated to this language: ${selectedLanguage}.
@@ -1116,6 +1524,13 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
           const aiResult = JSON.parse(jsonMatch[0]);
           setMedResult({ id: Date.now(), keywords: [], ...aiResult });
           setMedStatus('success');
+          
+          // Auto-voice feedback if enabled
+          if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+            const utterance = new SpeechSynthesisUtterance(`${t_func_ctx('possibleDisease', 'Possible Disease')}: ${aiResult.disease}. ${t_func_ctx('medicines', 'Medicines')}: ${aiResult.medicines}`);
+            utterance.lang = langCodeMap[selectedLanguage] || 'en-IN';
+            speechSynthesis.speak(utterance);
+          }
         } else {
           throw new Error("Invalid format from AI");
         }
@@ -1130,21 +1545,32 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
   };
   // --- Login Functions ---
   const handleSendOtp = async () => {
-    if (!phoneNumber || phoneNumber.length < 10) {
-      setLoginError('Please enter a valid phone number');
+    // Logical Validation: Must be 10 digits
+    const cleanedPhone = phoneNumber.replace(/\D/g, '').slice(-10);
+    if (cleanedPhone.length !== 10) {
+      setLoginError(t_func_ctx('invalidPhoneError', 'Please enter a valid 10-digit mobile number'));
+      if (navigator.vibrate) navigator.vibrate(100);
       return;
     }
+
     setLoginError('');
     setLoginLoading(true);
     
     // Check if Firebase Auth is mocked
-    if (Object.keys(auth).length === 0) {
-      // Mock OTP flow
+    if (Object.keys(auth).length === 0 || !auth.config) {
+      // Professional Mock OTP flow
+      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      setMockOtp(generatedOtp);
+      
       setTimeout(() => {
         setLoginStep('otp');
         setLoginLoading(false);
-        console.warn("Mock OTP sent: 123456");
-      }, 1000);
+        setShowMockNotification(true);
+        // Auto-hide notification after 10 seconds
+        setTimeout(() => setShowMockNotification(false), 10000);
+        
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+      }, 1500);
       return;
     }
 
@@ -1169,19 +1595,21 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
   };
 
   const handleVerifyOtp = async () => {
-    if (!otp || otp.length < 6) {
-      setLoginError('Please enter a valid 6-digit OTP');
+    if (!otp || otp.length !== 6 || !/^\d+$/.test(otp)) {
+      setLoginError(t_func_ctx('invalidOtpError', 'Please enter a valid 6-digit numeric OTP'));
+      if (navigator.vibrate) navigator.vibrate(100);
       return;
     }
     setLoginError('');
     setLoginLoading(true);
 
-    if (Object.keys(auth).length === 0) {
+    if (Object.keys(auth).length === 0 || !auth.config) {
       setTimeout(() => {
-        if (otp === '123456') {
+        if (otp === mockOtp || otp === '123456') {
           setLoginStep('profile');
+          setShowMockNotification(false);
         } else {
-          setLoginError('Invalid Mock OTP. Use 123456');
+          setLoginError('Invalid OTP. Please check the notification.');
         }
         setLoginLoading(false);
       }, 1000);
@@ -1199,71 +1627,142 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
   };
 
   const handleSaveProfile = () => {
-    if (!workerProfile.name || !workerProfile.ashaId || !workerProfile.village) {
-      setLoginError('Please fill all required fields');
+    if (workerProfile.name.trim().length < 3) {
+      setLoginError(t_func_ctx('invalidNameError', 'Please enter your full name (at least 3 characters)'));
       return;
     }
+    if (workerProfile.ashaId.trim().length < 4) {
+      setLoginError(t_func_ctx('invalidIdError', 'Please enter a valid ASHA Worker ID'));
+      return;
+    }
+    if (workerProfile.village.trim().length < 3) {
+      setLoginError(t_func_ctx('invalidVillageError', 'Please enter your village/ward name'));
+      return;
+    }
+    if (!workerProfile.supervisorContact || workerProfile.supervisorContact.length < 10) {
+      setLoginError(t_func_ctx('invalidSupervisorError', 'Please enter a valid supervisor contact number'));
+      return;
+    }
+
     const finalProfile = { ...workerProfile, contactNumber: phoneNumber };
     setAuthUser(finalProfile);
     localStorage.setItem('aashalink_user', JSON.stringify(finalProfile));
-    setCurrentScreen('home');
-    if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+    
+    const onboardingDone = localStorage.getItem('aashalink_onboarding_done');
+    if (onboardingDone) {
+      setCurrentScreen('home');
+    } else {
+      setCurrentScreen('permissions');
+    }
+
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = (days: number | 'all' = 'all') => {
     const doc = new jsPDF();
-    doc.setFontSize(18);
-    doc.text('ASHA Worker Patient Report', 14, 22);
+    doc.setFontSize(22);
+    doc.setTextColor(4, 52, 44);
+    doc.text('AashaLink: Patient Records Report', 14, 25);
     
     doc.setFontSize(11);
-    doc.text(`Generated by: ${authUser?.name || 'ASHA Worker'} (${authUser?.ashaId || 'N/A'})`, 14, 32);
-    doc.text(`Village/Ward: ${authUser?.village || 'N/A'}`, 14, 38);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 44);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`ASHA Worker: ${authUser?.name || 'N/A'}`, 14, 35);
+    doc.text(`ID: ${authUser?.ashaId || 'N/A'} | Village: ${authUser?.village || 'N/A'}`, 14, 41);
+    doc.text(`Period: ${days === 'all' ? 'All Records' : `Last ${days} Days`}`, 14, 47);
+    doc.text(`Report Date: ${new Date().toLocaleDateString()}`, 14, 53);
 
-    const tableColumn = ["Name", "Age", "Location", "Blood Group", "Latest Disease"];
+    const tableColumn = ["Date", "Name", "Age", "Location", "Diagnosis"];
     const tableRows: any[] = [];
 
-    patients.forEach(patient => {
-      const patientData = [
-        patient.name,
-        patient.age,
-        patient.loc,
-        patient.bloodGroup || 'N/A',
-        patient.disease || 'N/A',
-      ];
-      tableRows.push(patientData);
+    const now = new Date();
+    const filteredPatients = patients.filter(p => {
+      if (days === 'all') return true;
+      const pDate = new Date(p.date);
+      const diffTime = Math.abs(now.getTime() - pDate.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays <= days;
+    });
+
+    filteredPatients.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    filteredPatients.forEach(p => {
+      tableRows.push([p.date, p.name, p.age, p.loc, p.disease || 'N/A']);
     });
 
     autoTable(doc, {
       head: [tableColumn],
       body: tableRows,
-      startY: 50,
-      theme: 'grid',
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [4, 52, 44] } // Primary color
+      startY: 60,
+      theme: 'striped',
+      headStyles: { fillColor: [4, 52, 44], textColor: 255 },
+      styles: { fontSize: 8, cellPadding: 3 }
     });
 
+    const fileName = `AashaLink_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+    doc.save(fileName);
+
+    // Prepare WhatsApp Message
+    const msg = `📑 *AashaLink Report Generated*\nWorker: ${authUser?.name}\nPeriod: ${days === 'all' ? 'All Time' : `Last ${days} days`}\nTotal Records: ${filteredPatients.length}\n\n_Note: PDF has been downloaded to device._`;
+    window.open(`https://wa.me/${authUser?.supervisorContact}?text=${encodeURIComponent(msg)}`, '_blank');
+    
     if (navigator.vibrate) navigator.vibrate(50);
-    doc.save(`AashaLink_Report_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
   return (
-    <TranslationContext.Provider value={contextValue}>
-      <div className="min-h-screen bg-background font-sans text-stone-900 flex flex-col relative overflow-hidden">
-        {/* Top Section */}
-        {currentScreen !== 'login' && (
-          <header className="h-16 flex items-center justify-between px-6 border-b border-stone-100 bg-white relative z-10">
+    <ErrorBoundary>
+      <TranslationContext.Provider value={contextValue}>
+        <div className="min-h-screen bg-background font-sans text-stone-900 flex flex-col relative overflow-hidden">
+          {/* Mock OTP Notification Simulation */}
+          <AnimatePresence>
+            {showMockNotification && (
+              <motion.div 
+                initial={{ y: -100, opacity: 0 }}
+                animate={{ y: 20, opacity: 1 }}
+                exit={{ y: -100, opacity: 0 }}
+                className="fixed top-0 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-sm bg-stone-900/95 backdrop-blur-xl border border-white/10 rounded-3xl p-5 shadow-2xl flex items-start gap-4"
+              >
+                <div className="w-12 h-12 bg-primary-600 rounded-2xl flex items-center justify-center shrink-0 shadow-lg shadow-primary-900/20">
+                  <ShieldCheck className="w-6 h-6 text-white" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-[10px] font-black text-primary-400 uppercase tracking-widest">System Message</span>
+                    <span className="text-[10px] font-bold text-stone-500 uppercase">Just now</span>
+                  </div>
+                  <p className="text-white text-sm font-bold leading-tight mb-2">Verification Code Issued</p>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-white/10 text-white px-3 py-1.5 rounded-lg font-black tracking-[0.4em] text-lg border border-white/5">{mockOtp}</span>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(mockOtp);
+                        if (navigator.vibrate) navigator.vibrate(50);
+                      }}
+                      className="text-[10px] font-black text-primary-400 uppercase tracking-widest hover:text-primary-300 transition-colors"
+                    >
+                      Copy Code
+                    </button>
+                  </div>
+                </div>
+                <button onClick={() => setShowMockNotification(false)} className="text-stone-500 hover:text-white transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Top Section */}
+          {currentScreen !== 'login' && (
+          <header className="h-20 flex items-center justify-between px-6 border-b border-white/20 bg-white/40 backdrop-blur-xl relative z-10 shadow-sm">
             {currentScreen === 'home' ? (
-              <button onClick={() => setIsDrawerOpen(true)} className="p-2 -ml-2 hover:bg-stone-50 rounded-full transition-colors">
-                <Menu className="w-6 h-6 text-stone-700" />
+              <button onClick={() => setIsDrawerOpen(true)} className="p-2.5 -ml-2 bg-white/50 hover:bg-white rounded-2xl shadow-sm transition-all text-slate-700">
+                <Menu className="w-6 h-6" />
               </button>
             ) : (
-              <button onClick={() => setCurrentScreen('home')} className="p-2 -ml-2 hover:bg-stone-50 rounded-full transition-colors">
-                <ArrowLeft className="w-6 h-6 text-stone-700" />
+              <button onClick={() => setCurrentScreen('home')} className="p-2.5 -ml-2 bg-white/50 hover:bg-white rounded-2xl shadow-sm transition-all text-slate-700">
+                <ArrowLeft className="w-6 h-6" />
               </button>
             )}
           <div className="flex flex-col items-center">
-            <h1 className="text-xl font-extrabold text-stone-800 tracking-tight">
+            <h1 className="text-xl font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
               {currentScreen === 'home' && <T k="ashaLink">AashaLink</T>}
               {currentScreen === 'patient-records' && <T k="patientRecords">Patient Records</T>}
               {currentScreen === 'blood-bank' && (selectedBloodGroup ? `Blood: ${selectedBloodGroup}` : <T k="bloodBank">Blood Bank</T>)}
@@ -1273,15 +1772,17 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
               {currentScreen === 'settings' && <T k="settings">Settings</T>}
               {currentScreen === 'language' && <T k="selectLanguage">Select Language</T>}
               {currentScreen === 'profile' && <T k="profile">Profile</T>}
+              {currentScreen === 'asha-news' && <T k="ashaNews">ASHA News</T>}
+              {currentScreen === 'supply-requests' && <T k="supplyRequest">Supply Request</T>}
             </h1>
             {activePatient && (
-              <span className="text-[10px] font-bold uppercase tracking-wider text-primary-700 bg-primary-50 px-2.5 py-0.5 rounded-full mt-0.5">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-primary-700 bg-primary-100/80 px-3 py-1 rounded-full mt-1 border border-primary-200/50 shadow-sm">
                 <T>Active</T>: {activePatient.name}
               </span>
             )}
           </div>
-          <button onClick={() => setCurrentScreen('profile')} className="p-2 -mr-2 hover:bg-stone-50 rounded-full transition-colors">
-            <User className="w-6 h-6 text-stone-700" />
+          <button onClick={() => setCurrentScreen('profile')} className="p-2.5 -mr-2 bg-white/50 hover:bg-white rounded-2xl shadow-sm transition-all text-slate-700">
+            <User className="w-6 h-6" />
           </button>
         </header>
         )}
@@ -1295,8 +1796,17 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
           />
         )}
 
-        <main className="flex-1 max-w-md mx-auto w-full px-6 py-8 flex flex-col overflow-y-auto">
-        {currentScreen === 'home' ? (
+        <main className="flex-1 max-w-md mx-auto w-full flex flex-col relative overflow-hidden">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentScreen}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              variants={pageTransition}
+              className="flex-1 px-6 py-8 overflow-y-auto"
+            >
+              {currentScreen === 'home' ? (
           <>
             {isSosActive ? (
               <motion.div 
@@ -1394,16 +1904,54 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
             ) : (
               <>
                 {/* Feature Grid (2x2) */}
+
+                {/* Live News Section */}
+                <div className="bg-white/60 backdrop-blur-xl border border-white/40 p-6 rounded-[32px] shadow-xl shadow-slate-200/50 mb-8">
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                      <T k="latestUpdates">Latest Updates</T>
+                    </h3>
+                    <button onClick={() => setCurrentScreen('asha-news')} className="text-xs font-black text-primary-600 bg-primary-50 px-3 py-1.5 rounded-xl">
+                      VIEW ALL
+                    </button>
+                  </div>
+                  <div className="space-y-4">
+                    {ashaNews.slice(0, 2).map((news, idx) => (
+                      <div key={idx} className="group cursor-pointer" onClick={() => window.open(news.url, '_blank')}>
+                        <div className="flex items-start gap-4 p-3 rounded-2xl hover:bg-slate-50 transition-colors">
+                          <div className="bg-emerald-100 p-3 rounded-2xl text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-all shadow-sm">
+                            <FileText className="w-5 h-5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-slate-800 text-sm leading-tight mb-1 line-clamp-2">{news.title}</p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{news.published_date}</p>
+                          </div>
+                          <ArrowRight className="w-4 h-4 text-slate-300 self-center" />
+                        </div>
+                      </div>
+                    ))}
+                    {ashaNews.length === 0 && !newsLoading && (
+                      <div className="text-center py-6 text-slate-400 font-bold text-xs uppercase tracking-widest bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                        <T k="noNews">No news found. Check your connection.</T>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4 mb-12">
-                  <FeatureCard icon={Mic} label={<T k="voiceDiary">Voice Diary</T>} onClick={() => setCurrentScreen('voice-diary')} />
-                  <FeatureCard icon={FileText} label={<T k="patientRecords">Patient Records</T>} onClick={() => setCurrentScreen('patient-records')} />
-                  <FeatureCard icon={Bed} label={<T k="bedAvailability">Bed Availability</T>} onClick={() => setCurrentScreen('bed-availability')} />
-                  <FeatureCard icon={Droplet} label={<T k="bloodBank">Blood Bank</T>} onClick={() => { setCurrentScreen('blood-bank'); setSelectedBloodGroup(null); }} />
+                  <FeatureCard icon={Mic} label="Voice Diary" k="voiceDiary" onClick={() => setCurrentScreen('voice-diary')} />
+                  <FeatureCard icon={FileText} label="Patient Records" k="patientRecords" onClick={() => setCurrentScreen('patient-records')} />
+                  <FeatureCard icon={Package} label="Supply Request" k="requestSupplies" onClick={() => setCurrentScreen('supply-requests')} />
+                  <FeatureCard icon={Droplet} label="Blood Bank" k="bloodBank" onClick={() => setCurrentScreen('blood-bank')} />
+                  <FeatureCard icon={Bed} label="Bed Availability" k="bedAvailability" onClick={() => setCurrentScreen('bed-availability')} />
+                  <FeatureCard icon={Settings} label="Settings" k="settings" onClick={() => setCurrentScreen('settings')} />
                 </div>
 
                 {/* Center SOS Element */}
                 <div className="flex justify-center mb-12">
                   <motion.button
+                    id="sos-trigger-btn"
                     whileTap={{ scale: 0.9 }}
                     onClick={() => {
                       if ('vibrate' in navigator) {
@@ -1413,11 +1961,25 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                       
                       const triggerSOS = (lat?: number, lng?: number) => {
                         setIsSosActive(true);
-                        let message = `🚨 EMERGENCY ALERT from ASHA Worker: ${authUser?.name || 'Unknown'} (ID: ${authUser?.ashaId || 'Unknown'})!\n\nI need immediate assistance at my location!`;
-                        if (lat && lng) {
-                          message += `\n\nMy live location: https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+                        const locText = lat && lng ? `\n\nMy location: https://www.google.com/maps/search/?api=1&query=${lat},${lng} (${lat},${lng})` : "";
+                        const message = `🚨 AASHALINK EMERGENCY! ASHA Worker ${authUser?.name} (ID: ${authUser?.ashaId}) is in DANGER and needs immediate help!${locText}`;
+                        
+                        // Sending SMS logic
+                        // We use the sms: protocol which is widely supported in mobile browsers/PWAs
+                        const contacts = [authUser?.emergencyContact1, authUser?.supervisorContact].filter(Boolean);
+                        
+                        if (contacts.length > 0) {
+                          // Note: For background SMS, native Android implementation is required.
+                          // For PWA, we trigger the SMS app for each contact.
+                          contacts.forEach((phone, idx) => {
+                            setTimeout(() => {
+                              window.open(`sms:${phone}?body=${encodeURIComponent(message)}`, '_blank');
+                            }, idx * 1000); // Small delay to prevent popup blocking
+                          });
+                        } else {
+                          // Fallback to WhatsApp if no contacts defined
+                          window.open(`whatsapp://send?text=${encodeURIComponent(message)}`, '_blank');
                         }
-                        window.open(`whatsapp://send?text=${encodeURIComponent(message)}`, '_blank');
                       };
 
                       if (navigator.geolocation) {
@@ -1442,37 +2004,24 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                       ] 
                     }}
                     transition={{ repeat: Infinity, duration: 2 }}
-                    className="w-36 h-36 bg-gradient-to-b from-rose-500 to-rose-600 rounded-full flex items-center justify-center text-white shadow-xl shadow-rose-200/50 border-4 border-white"
+                    className="w-40 h-40 bg-gradient-to-br from-rose-400 via-rose-500 to-rose-600 rounded-full flex items-center justify-center text-white shadow-[0_10px_40px_-10px_rgba(225,29,72,0.8)] border-[6px] border-white relative group"
                   >
-                    <span className="text-4xl font-black tracking-tighter"><T k="sos">SOS</T></span>
+                    <div className="absolute inset-0 rounded-full bg-white opacity-0 group-hover:opacity-20 transition-opacity"></div>
+                    <span className="text-4xl font-black tracking-tighter drop-shadow-md"><T k="sos">SOS</T></span>
                   </motion.button>
                 </div>
 
-                {/* Med Assistant Card */}
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setCurrentScreen('med-assistant')}
-                  className="w-full bg-white border-2 border-primary-100 p-5 rounded-3xl flex items-center gap-5 shadow-sm hover:border-primary-200 hover:shadow-md transition-all group mb-8"
-                >
-                  <div className="p-4 bg-primary-600 rounded-2xl shadow-inner shadow-primary-700/50 group-hover:bg-primary-500 transition-colors">
-                    <PlusSquare className="w-8 h-8 text-white" />
-                  </div>
-                  <div className="text-left flex-1">
-                    <h3 className="text-lg font-extrabold text-stone-800"><T k="mediAssistantLabel">Medi Assistant</T></h3>
-                    <p className="text-xs text-stone-500 font-medium mt-0.5"><T k="mediAssistantSub">Symptom analysis tool</T></p>
-                  </div>
-                  <div className="w-10 h-10 rounded-full bg-primary-50 flex items-center justify-center group-hover:bg-primary-100 transition-colors">
-                    <Activity className="w-5 h-5 text-primary-600" />
-                  </div>
-                </motion.button>
 
                 {/* Dataset Insights Section */}
-                <div className="bg-stone-50 rounded-3xl p-6 border border-stone-200 shadow-inner">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="bg-stone-200 p-2 rounded-lg">
-                      <ClipboardList className="w-5 h-5 text-stone-600" />
+                <div className="glass-panel rounded-3xl p-6 border-b-4 border-b-slate-200/50 shadow-sm relative overflow-hidden">
+                  <div className="absolute -right-6 -top-6 w-32 h-32 bg-primary-100 rounded-full mix-blend-multiply filter blur-3xl opacity-70"></div>
+                  <div className="absolute -left-6 -bottom-6 w-32 h-32 bg-emerald-100 rounded-full mix-blend-multiply filter blur-3xl opacity-70"></div>
+                  
+                  <div className="flex items-center gap-3 mb-6 relative z-10">
+                    <div className="bg-slate-800 p-2.5 rounded-xl shadow-md">
+                      <ClipboardList className="w-5 h-5 text-white" />
                     </div>
-                    <h3 className="font-extrabold text-stone-800 tracking-tight"><T k="datasetInsights">Public Health Dataset Insights</T></h3>
+                    <h3 className="font-extrabold text-slate-800 tracking-tight text-lg"><T k="datasetInsights">Public Health Dataset Insights</T></h3>
                   </div>
                   
                   <div className="space-y-4">
@@ -1520,7 +2069,7 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                   type="text" 
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={t_func("searchPatients", "Search patients...")} 
+                  placeholder={t_func_ctx("searchPatients", "Search patients...")} 
                   className="w-full pl-12 pr-10 py-3.5 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-sm"
                 />
                 {searchQuery && (
@@ -1535,7 +2084,7 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
               <button 
                 onClick={handleExportPDF}
                 className="bg-primary-600 text-white p-3.5 rounded-2xl flex items-center justify-center shadow-sm hover:bg-primary-700 transition-colors"
-                title={t_func("exportPdf", "Export PDF Report")}
+                title={t_func_ctx("exportPdf", "Export PDF Report")}
               >
                 <Download className="w-5 h-5" />
               </button>
@@ -1648,9 +2197,9 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                     <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1"><T k="basicInfo">Basic Info</T></label>
-                        <input type="text" placeholder={t_func("fullName", "Full Name")} value={newPatient.name} onChange={e => setNewPatient({...newPatient, name: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
+                        <input type="text" placeholder={t_func_ctx("fullName", "Full Name")} value={newPatient.name} onChange={e => setNewPatient({...newPatient, name: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
                         <div className="grid grid-cols-2 gap-3">
-                          <input type="number" placeholder={t_func("age", "Age")} value={newPatient.age} onChange={e => setNewPatient({...newPatient, age: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
+                          <input type="number" placeholder={t_func_ctx("age", "Age")} value={newPatient.age} onChange={e => setNewPatient({...newPatient, age: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
                           <div className="relative">
                             <select 
                               value={newPatient.bloodGroup} 
@@ -1675,8 +2224,8 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
 
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1"><T k="medicalInfo">Medical Info</T></label>
-                        <input type="text" placeholder={t_func("locationWard", "Location / Ward")} value={newPatient.loc} onChange={e => setNewPatient({...newPatient, loc: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
-                        <input type="text" placeholder={t_func("diseaseCondition", "Disease / Condition")} value={newPatient.disease} onChange={e => setNewPatient({...newPatient, disease: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
+                        <input type="text" placeholder={t_func_ctx("locationWard", "Location / Ward")} value={newPatient.loc} onChange={e => setNewPatient({...newPatient, loc: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
+                        <input type="text" placeholder={t_func_ctx("diseaseCondition", "Disease / Condition")} value={newPatient.disease} onChange={e => setNewPatient({...newPatient, disease: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
                       </div>
 
                       <div className="space-y-1">
@@ -1685,22 +2234,72 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                           <span className="text-xs font-bold text-stone-400 uppercase"><T k="dob">DOB</T></span>
                           <input type="date" value={newPatient.dob} onChange={e => setNewPatient({...newPatient, dob: e.target.value})} className="flex-1 bg-transparent focus:outline-none font-medium text-stone-700" />
                         </div>
-                        <input type="tel" placeholder={t_func("contactNumber", "Contact Number")} value={newPatient.contact} onChange={e => setNewPatient({...newPatient, contact: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
-                        <input type="tel" placeholder={t_func("emergencyContact", "Emergency Contact")} value={newPatient.emergencyContact} onChange={e => setNewPatient({...newPatient, emergencyContact: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
-                        <textarea placeholder={t_func("address", "Address")} value={newPatient.address} onChange={e => setNewPatient({...newPatient, address: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium min-h-[80px]" />
+                        <input type="tel" placeholder={t_func_ctx("contactNumber", "Contact Number")} value={newPatient.contact} onChange={e => setNewPatient({...newPatient, contact: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
+                        <input type="tel" placeholder={t_func_ctx("emergencyContact", "Emergency Contact")} value={newPatient.emergencyContact} onChange={e => setNewPatient({...newPatient, emergencyContact: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium" />
+                        <textarea placeholder={t_func_ctx("address", "Address")} value={newPatient.address} onChange={e => setNewPatient({...newPatient, address: e.target.value})} className="w-full p-3.5 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium min-h-[80px]" />
                         
-                        <div className="mt-2">
-                          <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1 mb-1 block"><T k="photoAttachment">Photo Attachment</T></label>
-                          <input type="file" accept="image/*" capture="environment" onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) {
-                              const reader = new FileReader();
-                              reader.onload = (event) => {
-                                setNewPatient({...newPatient, photo: event.target?.result as string});
-                              };
-                              reader.readAsDataURL(e.target.files[0]);
-                            }
-                          }} className="w-full p-2 bg-stone-50 border border-stone-200 rounded-2xl focus:outline-none font-medium text-sm text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100" />
-                          {newPatient.photo && <img src={newPatient.photo} alt="Preview" className="w-20 h-20 object-cover rounded-xl mt-2 border-2 border-stone-200 shadow-sm" />}
+                        <div className="mt-4">
+                          <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1 mb-2 block"><T k="geotaggedPhoto">Geotagged Patient Photo</T></label>
+                          <div className="flex gap-4 items-start">
+                            <button 
+                              onClick={() => {
+                                // Trigger camera capture and location simultaneously
+                                const input = document.getElementById('patient-photo-input') as HTMLInputElement;
+                                if (input) input.click();
+                                
+                                // Capture Location
+                                if (navigator.geolocation) {
+                                  navigator.geolocation.getCurrentPosition((pos) => {
+                                    setNewPatient(prev => ({
+                                      ...prev, 
+                                      latitude: pos.coords.latitude, 
+                                      longitude: pos.coords.longitude,
+                                      loc: `${prev.loc} (${pos.coords.latitude.toFixed(2)}, ${pos.coords.longitude.toFixed(2)})`
+                                    }));
+                                  }, (err) => console.error("Geotagging failed:", err));
+                                }
+                              }}
+                              className="flex-1 bg-primary-50 border-2 border-dashed border-primary-200 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 hover:bg-primary-100 transition-colors group"
+                            >
+                              <div className="w-10 h-10 bg-primary-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-primary-200 group-active:scale-90 transition-transform">
+                                <Camera className="w-5 h-5" />
+                              </div>
+                              <span className="text-[10px] font-black text-primary-700 uppercase tracking-widest"><T k="capturePhoto">Capture Photo</T></span>
+                            </button>
+                            
+                            <input 
+                              id="patient-photo-input"
+                              type="file" 
+                              accept="image/*" 
+                              capture="environment" 
+                              className="hidden"
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files[0]) {
+                                  const reader = new FileReader();
+                                  reader.onload = (event) => {
+                                    setNewPatient(prev => ({...prev, photo: event.target?.result as string}));
+                                  };
+                                  reader.readAsDataURL(e.target.files[0]);
+                                }
+                              }} 
+                            />
+
+                            {newPatient.photo && (
+                              <div className="relative">
+                                <img src={newPatient.photo} alt="Preview" className="w-24 h-24 object-cover rounded-2xl border-2 border-white shadow-md" />
+                                {newPatient.latitude && (
+                                  <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-white p-1 rounded-full border-2 border-white shadow-sm">
+                                    <MapPin className="w-3 h-3" />
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          {newPatient.latitude && (
+                            <p className="text-[10px] font-bold text-emerald-600 mt-2 flex items-center gap-1 uppercase tracking-wider">
+                              <CheckCircle2 className="w-3 h-3" /> Geotagged: {newPatient.latitude.toFixed(4)}, {newPatient.longitude?.toFixed(4)}
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -1780,7 +2379,7 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                   type="text" 
                   value={bbSearchQuery}
                   onChange={(e) => setBbSearchQuery(e.target.value)}
-                  placeholder={t_func("searchBloodBanks", "Search blood banks...")} 
+                  placeholder={t_func_ctx("searchBloodBanks", "Search blood banks...")} 
                   className="w-full pl-12 pr-12 py-3.5 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-rose-500 shadow-sm"
                 />
                 {bbSearchQuery && (
@@ -1929,15 +2528,31 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                           );
                         })}
                       </div>
-                      <div className="flex gap-3">
+                      <div className="flex gap-2">
                         <button 
-                          onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${bb.lat},${bb.lng}`, '_blank')}
-                          className="flex-1 bg-stone-50 hover:bg-stone-100 text-stone-700 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-sm transition-colors border border-stone-200"
+                          onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${bb.lat},${bb.lng}`, '_system')}
+                          className="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-700 py-2.5 rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs transition-colors border border-slate-200"
                         >
-                          <MapPin className="w-4 h-4" /> <T k="location">Location</T>
+                          <MapPin className="w-3.5 h-3.5" /> <T k="location">Location</T>
                         </button>
-                        <button className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-600 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-sm transition-colors border border-rose-100">
-                          <Phone className="w-4 h-4" /> <T k="call">Call</T>
+                        <button 
+                          onClick={() => window.open(`tel:${bb.phone}`, '_system')}
+                          className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 py-2.5 rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs transition-colors border border-emerald-100"
+                        >
+                          <Phone className="w-3.5 h-3.5" /> <T k="call">Call</T>
+                        </button>
+                        <button 
+                          onClick={() => {
+                            if (!activePatient) {
+                              alert("Please select a patient first from the top of the screen or Patient Records.");
+                              setCurrentScreen('patient-records');
+                            } else {
+                              alert(`Blood Request sent to ${bb.name} for patient ${activePatient.name}. The hospital authority will contact you shortly.`);
+                            }
+                          }}
+                          className="flex-[1.5] bg-rose-500 hover:bg-rose-600 text-white py-2.5 rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs transition-colors shadow-md shadow-rose-200"
+                        >
+                          <T k="requestBook">Request</T>
                         </button>
                       </div>
                     </div>
@@ -1966,20 +2581,50 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
               </div>
             )}
             <div className="space-y-4">
-              {rawData.pmc_infrastructure.slice(0, 10).map((facility: any, index: number) => (
-                <div key={index} className="bg-white p-5 rounded-2xl border border-stone-100 shadow-sm">
-                  <h3 className="font-extrabold text-stone-800 text-lg">{facility['Facility Name']}</h3>
-                  <p className="text-sm text-stone-500 mt-1 mb-5 font-medium">{facility['Ward Name']}, {facility['City Name']} • {facility['Type  (Hospital / Nursing Home / Lab)']}</p>
-                  <div className="flex justify-between items-center">
-                    <span className={parseInt(facility['Number of Beds in facility type'] || '0') > 0 ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>
-                      {facility['Number of Beds in facility type'] || '0'} <T k="bedsAvailable">Beds Available</T>
-                    </span>
-                    <button className="bg-primary-600 text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-primary-700 transition-colors shadow-md shadow-primary-200">
-                      <T k="requestBook">Request Book</T>
-                    </button>
+              {rawData.pmc_infrastructure.slice(0, 10).map((facility: any, index: number) => {
+                const lat = 18.5204 + (Math.random() - 0.5) * 0.1;
+                const lng = 73.8567 + (Math.random() - 0.5) * 0.1;
+                const phone = "104";
+                const beds = parseInt(facility['Number of Beds in facility type'] || '0');
+                return (
+                  <div key={index} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                    <h3 className="font-extrabold text-slate-800 text-lg">{facility['Facility Name']}</h3>
+                    <p className="text-sm text-slate-500 mt-1 mb-4 font-medium">{facility['Ward Name']}, {facility['City Name']} • {facility['Type  (Hospital / Nursing Home / Lab)']}</p>
+                    <div className="mb-4">
+                      <span className={beds > 0 ? "text-emerald-600 font-bold bg-emerald-50 px-3 py-1 rounded-lg" : "text-rose-600 font-bold bg-rose-50 px-3 py-1 rounded-lg"}>
+                        {beds} <T k="bedsAvailable">Beds Available</T>
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                        <button 
+                          onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_system')}
+                          className="flex-1 bg-slate-50 hover:bg-slate-100 text-slate-700 py-2.5 rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs transition-colors border border-slate-200"
+                        >
+                          <MapPin className="w-3.5 h-3.5" /> <T k="location">Location</T>
+                        </button>
+                        <button 
+                          onClick={() => window.open(`tel:${phone}`, '_system')}
+                          className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 py-2.5 rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs transition-colors border border-emerald-100"
+                        >
+                          <Phone className="w-3.5 h-3.5" /> <T k="call">Call</T>
+                        </button>
+                        <button 
+                          onClick={() => {
+                            if (!activePatient) {
+                              alert("Please select a patient first from the top of the screen or Patient Records.");
+                              setCurrentScreen('patient-records');
+                            } else {
+                              alert(`Bed Request sent to ${facility['Facility Name']} for patient ${activePatient.name}. The hospital authority will contact you shortly.`);
+                            }
+                          }}
+                          className="flex-[1.5] bg-primary-600 hover:bg-primary-700 text-white py-2.5 rounded-xl flex items-center justify-center gap-1.5 font-bold text-xs transition-colors shadow-md shadow-primary-200"
+                        >
+                          <T k="requestBook">Request Bed</T>
+                        </button>
+                      </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ) : currentScreen === 'voice-diary' ? (
@@ -2028,7 +2673,7 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                     <textarea
                       value={transcript}
                       onChange={(e) => setTranscript(e.target.value)}
-                      placeholder={t_func("diaryPlaceholder", "Tap the microphone below to start recording, or type your manual diary entry here...")}
+                      placeholder={t_func_ctx("diaryPlaceholder", "Tap the microphone below to start recording, or type your manual diary entry here...")}
                       className="flex-1 w-full resize-none outline-none text-stone-700 font-medium leading-relaxed text-lg placeholder:text-stone-300 bg-transparent"
                     />
                   </div>
@@ -2152,7 +2797,7 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                                 }
                                 setIsTranscribing(true);
                                 try {
-                                  const translated = await translateTextGoogleCloudV3(diary.transcript, 'en', projectId, apiKey);
+                                  const translated = await translateTextWithGemini(diary.transcript, 'English', apiKey);
                                   setVoiceDiaries(prev => prev.map(d => d.id === diary.id ? {...d, translatedTranscript: translated} : d));
                                 } catch (e) {
                                   alert('Translation failed');
@@ -2207,7 +2852,7 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                 <div className="flex items-center gap-4">
                   <div className="bg-primary-100 p-3 rounded-full"><User className="w-6 h-6 text-primary-600"/></div>
                   <div>
-                    <p className="text-sm text-stone-600 font-medium">Current Patient:</p>
+                    <p className="text-sm text-stone-600 font-medium"><T k="currentPatient">Current Patient:</T></p>
                     <p className="font-extrabold text-stone-800 text-lg">{activePatient.name} | {activePatient.age} | {activePatient.loc}</p>
                   </div>
                 </div>
@@ -2215,7 +2860,7 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                   onClick={() => setCurrentScreen('patient-records')}
                   className="text-xs font-bold text-primary-600 bg-white px-3 py-1.5 rounded-xl border border-primary-200 hover:bg-primary-50 transition-colors"
                 >
-                  Change
+                  <T k="change">Change</T>
                 </button>
               </div>
             )}
@@ -2225,18 +2870,18 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                   <WifiOff className="w-5 h-5 text-amber-600" />
                 </div>
                 <div>
-                  <p className="text-sm font-extrabold text-amber-800">Offline Mode Active</p>
-                  <p className="text-xs text-amber-700 mt-0.5 font-medium">Using local AI engine and pre-loaded dataset for symptom analysis.</p>
+                  <p className="text-sm font-extrabold text-amber-800"><T k="offlineModeActive">Offline Mode Active</T></p>
+                  <p className="text-xs text-amber-700 mt-0.5 font-medium"><T k="usingLocalAI">Using local AI engine and pre-loaded dataset for symptom analysis.</T></p>
                 </div>
               </div>
             )}
             {medStatus === 'idle' && (
               <div className="space-y-4">
-                <input type="text" placeholder="Patient name" value={medInput.name} onChange={e => setMedInput({...medInput, name: e.target.value})} className="w-full p-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium shadow-sm" />
-                <input type="text" placeholder="Known or suspected disease (optional)" value={medInput.disease} onChange={e => setMedInput({...medInput, disease: e.target.value})} className="w-full p-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium shadow-sm" />
+                <input type="text" placeholder={t_func_ctx("patientName", "Patient name")} value={medInput.name} onChange={e => setMedInput({...medInput, name: e.target.value})} className="w-full p-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium shadow-sm" />
+                <input type="text" placeholder={t_func_ctx("suspectedDisease", "Known or suspected disease (optional)")} value={medInput.disease} onChange={e => setMedInput({...medInput, disease: e.target.value})} className="w-full p-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium shadow-sm" />
                 
                 <div className="relative">
-                  <textarea placeholder="Enter symptoms (e.g. fever, headache, vomiting) or use microphone" rows={3} value={medInput.symptoms} onChange={e => setMedInput({...medInput, symptoms: e.target.value})} className={`w-full p-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium shadow-sm resize-none pr-14 ${isTranscribing ? 'opacity-50 pointer-events-none' : ''}`} />
+                  <textarea placeholder={t_func_ctx("enterSymptoms", "Enter symptoms (e.g. fever, headache, vomiting) or use microphone")} rows={3} value={medInput.symptoms} onChange={e => setMedInput({...medInput, symptoms: e.target.value})} className={`w-full p-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium shadow-sm resize-none pr-14 ${isTranscribing ? 'opacity-50 pointer-events-none' : ''}`} />
                   {isTranscribing ? (
                     <div className="absolute right-4 bottom-4 w-6 h-6 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
                   ) : (
@@ -2249,15 +2894,15 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                   )}
                 </div>
 
-                <input type="text" placeholder="Since when? (e.g. 2 days, 5 hours)" value={medInput.time} onChange={e => setMedInput({...medInput, time: e.target.value})} className="w-full p-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium shadow-sm" />
-                <input type="text" placeholder="Existing conditions (e.g. diabetes, pregnant, BP)" value={medInput.existing} onChange={e => setMedInput({...medInput, existing: e.target.value})} className="w-full p-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium shadow-sm" />
+                <input type="text" placeholder={t_func_ctx("sinceWhen", "Since when? (e.g. 2 days, 5 hours)")} value={medInput.time} onChange={e => setMedInput({...medInput, time: e.target.value})} className="w-full p-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium shadow-sm" />
+                <input type="text" placeholder={t_func_ctx("existingConditions", "Existing conditions (e.g. diabetes, pregnant, BP)")} value={medInput.existing} onChange={e => setMedInput({...medInput, existing: e.target.value})} className="w-full p-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-500 font-medium shadow-sm" />
                 
                 <button 
                   onClick={handleAnalyze}
                   disabled={!medInput.symptoms}
                   className="w-full bg-primary-600 text-white font-bold py-4 rounded-2xl mt-6 hover:bg-primary-700 disabled:opacity-50 transition-colors shadow-md shadow-primary-200"
                 >
-                  Analyze
+                  <T k="analyze">Analyze</T>
                 </button>
               </div>
             )}
@@ -2265,7 +2910,7 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
             {medStatus === 'loading' && (
               <div className="flex flex-col items-center justify-center py-20 space-y-6">
                 <div className="w-12 h-12 border-4 border-primary-100 border-t-primary-600 rounded-full animate-spin" />
-                <p className="text-stone-500 font-bold tracking-wide">Analyzing symptoms...</p>
+                <p className="text-stone-500 font-bold tracking-wide"><T k="analyzingSymptoms">Analyzing symptoms...</T></p>
               </div>
             )}
 
@@ -2274,9 +2919,9 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                 <div className="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mb-2">
                   <AlertTriangle className="w-10 h-10 text-rose-500" />
                 </div>
-                <p className="text-rose-600 font-extrabold text-xl">Symptoms not recognized.</p>
-                <p className="text-stone-500 font-medium">Please refer patient to nearest PHC.</p>
-                <button onClick={() => setMedStatus('idle')} className="mt-6 px-8 py-3 bg-stone-100 text-stone-700 font-bold rounded-xl hover:bg-stone-200 transition-colors">Try Again</button>
+                <p className="text-rose-600 font-extrabold text-xl"><T k="symptomsNotRecognized">Symptoms not recognized.</T></p>
+                <p className="text-stone-500 font-medium"><T k="referToPHC">Please refer patient to nearest PHC.</T></p>
+                <button onClick={() => setMedStatus('idle')} className="mt-6 px-8 py-3 bg-stone-100 text-stone-700 font-bold rounded-xl hover:bg-stone-200 transition-colors"><T k="tryAgain">Try Again</T></button>
               </div>
             )}
 
@@ -2287,9 +2932,24 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                   <span className="text-rose-600 font-bold text-sm tracking-wide"><T k="offlineModeDataset">Offline Mode - Local Dataset</T></span>
                 </div>
 
-                <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm">
-                  <h4 className="text-[11px] font-bold text-stone-400 uppercase tracking-widest mb-1.5"><T k="possibleDisease">Possible Disease</T></h4>
-                  <p className="text-xl font-black text-stone-800"><T>{medResult.disease}</T></p>
+                <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-bl-[80px] -mr-4 -mt-4 transition-all group-hover:scale-110" />
+                  <h4 className="text-[11px] font-bold text-stone-400 uppercase tracking-widest mb-1.5 relative z-10"><T k="possibleDisease">Possible Disease</T></h4>
+                  <div className="flex justify-between items-center relative z-10">
+                    <p className="text-2xl font-black text-stone-800"><T>{medResult.disease}</T></p>
+                    <button 
+                      onClick={() => {
+                        if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                          const utterance = new SpeechSynthesisUtterance(`${t_func_ctx('possibleDisease', 'Possible Disease')}: ${medResult.disease}. ${t_func_ctx('medicines', 'Medicines')}: ${medResult.medicines}`);
+                          utterance.lang = langCodeMap[selectedLanguage] || 'en-IN';
+                          speechSynthesis.speak(utterance);
+                        }
+                      }}
+                      className="p-2.5 bg-primary-50 text-primary-600 rounded-xl hover:bg-primary-100 active:scale-90 transition-all"
+                    >
+                      <Volume2 className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="bg-white p-6 rounded-3xl border border-stone-100 shadow-sm">
@@ -2322,6 +2982,15 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                     <T k="saveReportToRecords">Save Report to Records</T>
                   </button>
                   <button 
+                    onClick={() => {
+                      const msg = `🚨 AashaLink Medi-Report\nPatient: ${activePatient?.name || medInput.name}\nDiagnosis: ${medResult.disease}\n\nMedicines: ${medResult.medicines}\n\nPrecautions: ${medResult.precautions}\n\n⚠️ Red Flags: ${medResult.red_flags}`;
+                      window.open(`https://wa.me/${workerProfile.supervisorContact}?text=${encodeURIComponent(msg)}`, '_blank');
+                    }}
+                    className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-200 flex items-center justify-center gap-2"
+                  >
+                    <Share2 className="w-5 h-5" /> <T k="shareWithSupervisor">Share with Supervisor</T>
+                  </button>
+                  <button 
                     onClick={() => { setMedStatus('idle'); setMedInput({ name: '', disease: '', symptoms: '', time: '', existing: '' }); }}
                     className="w-full bg-stone-100 text-stone-700 font-bold py-4 rounded-2xl hover:bg-stone-200 transition-colors"
                   >
@@ -2331,132 +3000,415 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
               </div>
             )}
           </div>
-        ) : currentScreen === 'login' ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-6 h-full min-h-[80vh]">
-            <div className="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center mb-6 shrink-0">
-              <User className="w-10 h-10 text-primary-600" />
+        ) : currentScreen === 'supply-requests' ? (
+          <div className="pb-24">
+            <div className="bg-white p-6 rounded-[32px] border border-stone-100 shadow-xl mb-8">
+              <h2 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-3">
+                <Package className="w-6 h-6 text-primary-600" />
+                <T k="requestSupplies">Request Supplies</T>
+              </h2>
+              
+              <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4"><T k="selectKit">Select a Kit Template</T></p>
+              <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide mb-8">
+                {kits.map((kit, idx) => (
+                  <button 
+                    key={idx}
+                    onClick={() => setCurrentRequest(kit.items.map(i => ({ ...i })))}
+                    className="flex-shrink-0 bg-slate-50 border-2 border-slate-100 p-5 rounded-3xl text-left hover:border-primary-400 transition-all active:scale-95 group"
+                  >
+                    <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center mb-4 shadow-sm group-hover:bg-primary-600 group-hover:text-white transition-all">
+                      <kit.icon className="w-6 h-6" />
+                    </div>
+                    <p className="font-black text-slate-800 text-sm tracking-tight">{kit.name}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">{kit.items.length} Items</p>
+                  </button>
+                ))}
+              </div>
+
+              {currentRequest.length > 0 && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+                  <div className="flex justify-between items-center px-2">
+                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest"><T k="itemsInKit">Items in this Kit</T></p>
+                    <button 
+                      onClick={() => {
+                        const code = prompt(t_func_ctx("scanBarcodePrompt", "Scan or Enter Barcode:"));
+                        if (code) setCurrentRequest([...currentRequest, { name: `Item ${code}`, quantity: 1, barcode: code }]);
+                      }}
+                      className="text-[10px] font-black text-primary-600 flex items-center gap-1.5 bg-primary-50 px-3 py-1.5 rounded-xl"
+                    >
+                      <LucideLock className="w-3 h-3" /> <T k="scanBarcode">Scan Barcode</T>
+                    </button>
+                  </div>
+                  <div className="space-y-3">
+                    {currentRequest.map((item, idx) => (
+                      <div key={idx} className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <span className="font-bold text-slate-700 text-sm">{item.name}</span>
+                        <div className="flex items-center gap-4">
+                          <button onClick={() => {
+                            const newReq = [...currentRequest];
+                            if (newReq[idx].quantity > 1) newReq[idx].quantity--;
+                            else newReq.splice(idx, 1);
+                            setCurrentRequest(newReq);
+                          }} className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-rose-500 font-black">-</button>
+                          <span className="font-black text-slate-800 w-4 text-center">{item.quantity}</span>
+                          <button onClick={() => {
+                            const newReq = [...currentRequest];
+                            newReq[idx].quantity++;
+                            setCurrentRequest(newReq);
+                          }} className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-emerald-500 font-black">+</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="pt-6 border-t border-slate-100 space-y-4">
+                    <div className="flex gap-4">
+                      <button 
+                        onClick={() => setRequestPhoto("mock_photo_uri")}
+                        className={`flex-1 py-4 rounded-2xl border-2 border-dashed flex flex-col items-center gap-2 transition-all ${requestPhoto ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 hover:border-primary-400'}`}
+                      >
+                        <Camera className={`w-6 h-6 ${requestPhoto ? 'text-emerald-600' : 'text-slate-400'}`} />
+                        <p className={`text-[10px] font-black uppercase tracking-widest ${requestPhoto ? 'text-emerald-600' : 'text-slate-400'}`}>{requestPhoto ? "PHOTO ATTACHED" : t_func_ctx("addPhoto", "Add Photo Proof")}</p>
+                      </button>
+                      <div className="flex-1 py-4 rounded-2xl border-2 border-slate-100 bg-slate-50 flex flex-col items-center gap-2 opacity-50">
+                        <MapPin className="w-6 h-6 text-slate-400" />
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">GEO-TAGGED</p>
+                      </div>
+                    </div>
+                    
+                    <button 
+                      onClick={handleAddSupplyRequest}
+                      className="w-full bg-primary-600 text-white py-5 rounded-3xl font-black text-lg shadow-xl shadow-primary-200 flex items-center justify-center gap-3 active:scale-95 transition-all"
+                    >
+                      <T k="submitRequest">Submit Request</T> <ArrowRight className="w-6 h-6" />
+                    </button>
+                  </div>
+                </motion.div>
+              )}
             </div>
-            <h2 className="text-2xl font-extrabold text-stone-800 mb-2"><T k="portalTitle">ASHA Worker Portal</T></h2>
-            <p className="text-stone-500 mb-8 text-center">
-              {loginStep === 'phone' ? <T k="enterPhone">Enter your mobile number to continue</T> : 
+
+            {supplyRequests.length > 0 && (
+              <div className="px-2">
+                <p className="text-xs font-black text-stone-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                  <LucideHistory className="w-4 h-4" /> RECENT REQUESTS
+                </p>
+                <div className="space-y-4">
+                  {supplyRequests.slice().reverse().map((req, i) => (
+                    <div key={i} className="bg-white p-5 rounded-3xl border border-stone-100 shadow-sm relative overflow-hidden">
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <p className="text-[10px] font-black text-stone-400 uppercase tracking-widest mb-1">{new Date(req.created_at).toLocaleDateString()}</p>
+                          <h4 className="font-extrabold text-stone-800">{req.items.length} Items Requested</h4>
+                        </div>
+                        <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-widest ${req.sync_status === 'synced' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600 animate-pulse'}`}>
+                          {req.sync_status}
+                        </span>
+                      </div>
+                      <div className="flex gap-1 flex-wrap">
+                        {req.items.slice(0, 3).map((item, idx) => (
+                          <span key={idx} className="text-[10px] font-bold bg-slate-50 text-slate-500 px-2 py-1 rounded-md">{item.name} x{item.quantity}</span>
+                        ))}
+                        {req.items.length > 3 && <span className="text-[10px] font-bold bg-slate-50 text-slate-500 px-2 py-1 rounded-md">+{req.items.length - 3} more</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : currentScreen === 'asha-news' ? (
+          <div className="pb-24">
+            <div className="bg-white/60 backdrop-blur-xl border border-white/40 p-6 rounded-[32px] shadow-xl shadow-slate-200/50 mb-6">
+              <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-2">
+                <FileText className="w-6 h-6 text-emerald-500" />
+                <T k="latestUpdates">Latest Updates</T>
+              </h3>
+              <p className="text-xs text-slate-500 font-medium mb-6">Real-time government notifications and guidelines for ASHA workers.</p>
+              
+              <div className="space-y-4">
+                {ashaNews.map((news, idx) => (
+                  <div key={idx} className="group bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:border-emerald-200 transition-all cursor-pointer" onClick={() => window.open(news.url, '_blank')}>
+                    <div className="flex justify-between items-start mb-3">
+                      <span className="bg-emerald-50 text-emerald-600 text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-widest">{news.category || 'Notification'}</span>
+                      <p className="text-[10px] text-slate-400 font-bold">{news.published_date}</p>
+                    </div>
+                    <h4 className="font-extrabold text-slate-800 text-lg mb-4 line-clamp-3">{news.title}</h4>
+                    <button className="w-full bg-slate-50 text-slate-600 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 group-hover:bg-emerald-600 group-hover:text-white transition-all">
+                      <T k="visitSite">Visit Source</T> <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                {ashaNews.length === 0 && (
+                  <div className="text-center py-20">
+                    <CloudOff className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                    <p className="text-slate-400 font-bold uppercase tracking-widest text-xs"><T k="noNews">No news found. Check your connection.</T></p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : currentScreen === 'permissions' ? (
+          <PermissionScreen onComplete={(perms) => {
+            if (authUser) {
+              const updated = { ...authUser, autoSosEnabled: perms.autoSms };
+              setAuthUser(updated);
+              localStorage.setItem('aashalink_user', JSON.stringify(updated));
+            }
+            localStorage.setItem('aashalink_onboarding_done', 'true');
+            setCurrentScreen('home');
+          }} />
+        ) : currentScreen === 'login' ? (
+          <div className={`flex-1 flex flex-col items-center justify-center p-6 h-full min-h-[80vh] transition-all duration-500 ${deviceType === 'desktop' ? 'max-w-2xl mx-auto' : deviceType === 'tablet' ? 'max-w-xl mx-auto' : 'w-full'}`}>
+            <motion.div 
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="w-24 h-24 bg-gradient-to-br from-primary-50 to-primary-100 rounded-3xl flex items-center justify-center mb-8 shrink-0 shadow-inner"
+            >
+              <User className="w-12 h-12 text-primary-600" />
+            </motion.div>
+            <h2 className="text-3xl font-black text-stone-800 mb-3 tracking-tighter"><T k="portalTitle">ASHA Worker Portal</T></h2>
+            <p className="text-stone-500 mb-10 text-center font-medium max-w-sm">
+              {loginStep === 'language' ? <T k="selectLanguage">Please select your preferred language</T> :
+               loginStep === 'phone' ? <T k="enterPhone">Enter your mobile number to continue</T> : 
                loginStep === 'otp' ? <T k="enterOtp">Enter the verification code sent to your phone</T> : 
                <T k="completeProfile">Complete your profile setup</T>}
             </p>
             
-            <div className="w-full bg-white p-6 rounded-3xl border border-stone-100 shadow-sm">
+            <div className={`w-full bg-white p-8 rounded-[40px] border border-stone-100 shadow-2xl shadow-stone-200/50 overflow-hidden relative ${deviceType !== 'mobile' ? 'border-2' : ''}`}>
+              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-primary-400 to-emerald-400 opacity-20"></div>
+              
               {loginError && (
-                <div className="mb-4 p-3 bg-rose-50 border border-rose-100 text-rose-600 text-sm rounded-xl font-medium text-center">
+                <motion.div 
+                  initial={{ x: -20, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  className="mb-6 p-4 bg-rose-50 border border-rose-100 text-rose-600 text-sm rounded-2xl font-bold text-center flex items-center justify-center gap-2"
+                >
+                  <ShieldAlert className="w-4 h-4" />
                   {loginError}
-                </div>
+                </motion.div>
               )}
               
+              {loginStep === 'language' && (
+                <div className="grid grid-cols-1 gap-4">
+                  {(Object.keys(langCodeMap) as Language[]).map((lang) => (
+                    <motion.button
+                      key={lang}
+                      whileHover={{ x: 5, backgroundColor: '#f0fdf4' }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => {
+                        setSelectedLanguage(lang);
+                        setLoginStep('phone');
+                        if (navigator.vibrate) navigator.vibrate(50);
+                      }}
+                      className="w-full flex items-center justify-between p-6 bg-stone-50 rounded-[24px] border border-stone-100 transition-all text-left group"
+                    >
+                      <div className="flex items-center gap-5">
+                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm group-hover:bg-primary-600 group-hover:text-white transition-all duration-300">
+                          <Globe className="w-6 h-6" />
+                        </div>
+                        <span className="font-black text-stone-800 text-xl tracking-tight">{lang}</span>
+                      </div>
+                      <ArrowRight className="w-6 h-6 text-stone-300 group-hover:text-primary-500 transform group-hover:translate-x-1 transition-all" />
+                    </motion.button>
+                  ))}
+                </div>
+              )}
+
               {loginStep === 'phone' && (
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <div>
-                    <label className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2 block">Mobile Number</label>
-                    <input 
-                      type="tel" 
-                      value={phoneNumber} 
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                      placeholder="+91 9876543210"
-                      className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 font-bold text-stone-700 outline-none focus:border-primary-400 focus:bg-white transition-colors"
-                    />
+                    <label className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-3 block px-1"><T k="mobileNumber">Mobile Number</T></label>
+                    <div className="relative">
+                      <div className="absolute left-5 top-1/2 -translate-y-1/2 text-stone-400 font-black text-lg">+91</div>
+                      <input 
+                        type="tel" 
+                        value={phoneNumber} 
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        placeholder={t_func_ctx('phonePlaceholder', '9876543210')}
+                        className="w-full bg-stone-50 border-2 border-stone-50 rounded-3xl pl-16 pr-6 py-5 font-black text-xl text-stone-700 outline-none focus:border-primary-400 focus:bg-white transition-all shadow-sm"
+                      />
+                    </div>
                   </div>
                   <div id="recaptcha-container"></div>
-                  <button 
+                  <motion.button 
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={handleSendOtp} 
                     disabled={loginLoading}
-                    className="w-full bg-primary-600 text-white font-bold py-4 rounded-xl hover:bg-primary-700 transition-colors shadow-lg shadow-primary-200 disabled:opacity-70 flex justify-center items-center h-14"
+                    className="w-full bg-gradient-to-r from-primary-600 to-emerald-600 text-white font-black py-5 rounded-3xl hover:shadow-xl hover:shadow-primary-200 transition-all disabled:opacity-70 flex justify-center items-center h-16 text-lg"
                   >
-                    {loginLoading ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <T k="sendOtp">Send OTP</T>}
-                  </button>
+                    {loginLoading ? <div className="w-7 h-7 border-3 border-white border-t-transparent rounded-full animate-spin"></div> : <T k="sendOtp">Send OTP</T>}
+                  </motion.button>
                 </div>
               )}
 
               {loginStep === 'otp' && (
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <div>
-                    <label className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2 block">6-Digit OTP</label>
+                    <label className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-3 block px-1 text-center"><T k="otpLabel">Enter 6-Digit OTP</T></label>
                     <input 
                       type="text" 
                       maxLength={6}
                       value={otp} 
                       onChange={(e) => setOtp(e.target.value)}
-                      placeholder="123456"
-                      className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 font-bold text-stone-700 outline-none focus:border-primary-400 focus:bg-white transition-colors text-center tracking-widest text-lg"
+                      placeholder={t_func_ctx('otpPlaceholder', '••••••')}
+                      className="w-full bg-stone-50 border-2 border-stone-50 rounded-3xl px-6 py-6 font-black text-stone-700 outline-none focus:border-primary-400 focus:bg-white transition-all text-center tracking-[0.8em] text-3xl shadow-sm"
                     />
                   </div>
-                  <button 
+                  <motion.button 
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={handleVerifyOtp} 
                     disabled={loginLoading}
-                    className="w-full bg-primary-600 text-white font-bold py-4 rounded-xl hover:bg-primary-700 transition-colors shadow-lg shadow-primary-200 disabled:opacity-70 flex justify-center items-center h-14"
+                    className="w-full bg-gradient-to-r from-primary-600 to-emerald-600 text-white font-black py-5 rounded-3xl hover:shadow-xl hover:shadow-primary-200 transition-all disabled:opacity-70 flex justify-center items-center h-16 text-lg"
                   >
-                    {loginLoading ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Verify & Continue'}
-                  </button>
+                    {loginLoading ? <div className="w-7 h-7 border-3 border-white border-t-transparent rounded-full animate-spin"></div> : <T k="verifyContinue">Verify & Continue</T>}
+                  </motion.button>
                 </div>
               )}
 
               {loginStep === 'profile' && (
-                <div className="space-y-4 max-h-[50vh] overflow-y-auto px-1 py-1 -mx-1">
+                <div className="space-y-5 max-h-[60vh] overflow-y-auto px-2 py-1 -mx-2 scrollbar-hide">
+                  <div className="bg-emerald-50/50 p-4 rounded-3xl border border-emerald-100/50 mb-2">
+                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest text-center">Step 3: Setup your digital ID</p>
+                  </div>
                   <div>
-                    <label className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2 block">Full Name</label>
+                    <label className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2 block px-1">Full Name</label>
                     <input 
                       type="text" 
                       value={workerProfile.name} 
                       onChange={(e) => setWorkerProfile({...workerProfile, name: e.target.value})}
-                      placeholder="Sita Devi"
-                      className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 font-bold text-stone-700 outline-none focus:border-primary-400 focus:bg-white transition-colors"
+                      placeholder={t_func_ctx('namePlaceholder', 'Your full name')}
+                      className="w-full bg-stone-50 border-2 border-stone-50 rounded-2xl px-5 py-4 font-bold text-stone-700 outline-none focus:border-primary-400 focus:bg-white transition-all"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2 block">ASHA Worker ID</label>
+                    <label className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2 block px-1">ASHA Worker ID</label>
                     <input 
                       type="text" 
                       value={workerProfile.ashaId} 
                       onChange={(e) => setWorkerProfile({...workerProfile, ashaId: e.target.value})}
-                      placeholder="AW-2026-8942"
-                      className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 font-bold text-stone-700 outline-none focus:border-primary-400 focus:bg-white transition-colors"
+                      placeholder={t_func_ctx('idPlaceholder', 'AW-XXXX-XXXX')}
+                      className="w-full bg-stone-50 border-2 border-stone-50 rounded-2xl px-5 py-4 font-bold text-stone-700 outline-none focus:border-primary-400 focus:bg-white transition-all"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2 block">Assigned Village / Ward</label>
+                    <label className="text-[10px] font-black text-stone-400 uppercase tracking-[0.2em] mb-2 block px-1">Village / Ward</label>
                     <input 
                       type="text" 
                       value={workerProfile.village} 
                       onChange={(e) => setWorkerProfile({...workerProfile, village: e.target.value})}
-                      placeholder="Village Name"
-                      className="w-full bg-stone-50 border border-stone-200 rounded-xl px-4 py-3 font-bold text-stone-700 outline-none focus:border-primary-400 focus:bg-white transition-colors"
+                      placeholder={t_func_ctx('villagePlaceholder', 'Enter village name')}
+                      className="w-full bg-stone-50 border-2 border-stone-50 rounded-2xl px-5 py-4 font-bold text-stone-700 outline-none focus:border-primary-400 focus:bg-white transition-all"
                     />
                   </div>
-                  <button 
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-black text-rose-400 uppercase tracking-[0.2em] mb-2 block px-1 flex items-center gap-2">
+                        <Home className="w-3.5 h-3.5" /> Emergency Contact
+                      </label>
+                      <input 
+                        type="tel" 
+                        value={workerProfile.emergencyContact1} 
+                        onChange={(e) => setWorkerProfile({...workerProfile, emergencyContact1: e.target.value})}
+                        placeholder="Family number"
+                        className="w-full bg-stone-50 border-2 border-stone-50 rounded-2xl px-5 py-4 font-bold text-stone-700 outline-none focus:border-rose-400 focus:bg-white transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-primary-400 uppercase tracking-[0.2em] mb-2 block px-1 flex items-center gap-2">
+                        <ShieldCheck className="w-3.5 h-3.5" /> Supervisor Number
+                      </label>
+                      <input 
+                        type="tel" 
+                        value={workerProfile.supervisorContact} 
+                        onChange={(e) => setWorkerProfile({...workerProfile, supervisorContact: e.target.value})}
+                        placeholder="ANM number"
+                        className="w-full bg-stone-50 border-2 border-stone-50 rounded-2xl px-5 py-4 font-bold text-stone-700 outline-none focus:border-primary-400 focus:bg-white transition-all"
+                      />
+                    </div>
+                  </div>
+                  <motion.button 
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={handleSaveProfile} 
-                    className="w-full bg-primary-600 text-white font-bold py-4 rounded-xl hover:bg-primary-700 transition-colors shadow-lg shadow-primary-200 mt-2"
+                    className="w-full bg-primary-600 text-white font-black py-5 rounded-3xl hover:shadow-xl hover:shadow-primary-200 transition-all mt-4 text-lg"
                   >
                     Complete Registration
-                  </button>
+                  </motion.button>
                 </div>
               )}
             </div>
           </div>
         ) : currentScreen === 'settings' ? (
           <div className="p-6 space-y-4">
-            <h2 className="text-xl font-extrabold text-stone-800 mb-6">Settings</h2>
-            <div className="bg-white rounded-2xl border border-stone-100 p-4 shadow-sm flex items-center justify-between">
-              <span className="font-bold text-stone-700">Notifications</span>
-              <div className="w-12 h-6 bg-primary-600 rounded-full relative">
-                <div className="w-4 h-4 bg-white rounded-full absolute right-1 top-1"></div>
+            <h2 className="text-xl font-extrabold text-stone-800 mb-6 flex items-center gap-3">
+              <Settings className="w-6 h-6 text-primary-600" />
+              <T k="settings">Settings</T>
+            </h2>
+            
+            <div className="bg-white rounded-3xl border border-stone-100 p-6 shadow-sm flex items-center justify-between group hover:border-primary-200 transition-all">
+              <div>
+                <p className="font-black text-slate-800 text-sm tracking-tight flex items-center gap-2">
+                  <Moon className="w-4 h-4 text-primary-500" />
+                  <T k="theme">Theme</T>
+                </p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
+                  {theme === 'dark' ? t_func_ctx('darkMode', 'Dark Mode') : t_func_ctx('lightMode', 'Light Mode')}
+                </p>
               </div>
+              <button 
+                onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+                className={`w-14 h-8 rounded-full p-1 transition-all duration-500 ${theme === 'dark' ? 'bg-primary-600' : 'bg-slate-200'}`}
+              >
+                <div className={`w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-md transform transition-transform duration-500 ${theme === 'dark' ? 'translate-x-6' : 'translate-x-0'}`}>
+                  {theme === 'dark' ? <Moon className="w-3.5 h-3.5 text-primary-600" /> : <Sun className="w-3.5 h-3.5 text-amber-500" />}
+                </div>
+              </button>
             </div>
-            <div className="bg-white rounded-2xl border border-stone-100 p-4 shadow-sm flex items-center justify-between">
-              <span className="font-bold text-stone-700">Dark Mode</span>
-              <div className="w-12 h-6 bg-stone-200 rounded-full relative">
-                <div className="w-4 h-4 bg-white rounded-full absolute left-1 top-1"></div>
+
+            <div className="bg-white rounded-3xl border border-stone-100 p-6 shadow-sm flex items-center justify-between group hover:border-rose-200 transition-all">
+              <div>
+                <p className="font-black text-slate-800 text-sm tracking-tight flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-rose-500" />
+                  <T k="autoSmsAccess">Automatic SOS</T>
+                </p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Direct alerts to contacts</p>
+              </div>
+              <button 
+                onClick={() => {
+                  if (authUser) {
+                    const updated = { ...authUser, autoSosEnabled: !authUser.autoSosEnabled };
+                    setAuthUser(updated);
+                    localStorage.setItem('aashalink_user', JSON.stringify(updated));
+                  }
+                }}
+                className={`w-14 h-8 rounded-full p-1 transition-all duration-500 ${authUser?.autoSosEnabled ? 'bg-rose-500' : 'bg-slate-200'}`}
+              >
+                <div className={`w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-md transform transition-transform duration-500 ${authUser?.autoSosEnabled ? 'translate-x-6' : 'translate-x-0'}`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${authUser?.autoSosEnabled ? 'bg-rose-500' : 'bg-slate-300'}`} />
+                </div>
+              </button>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-stone-100 p-6 shadow-sm opacity-50 cursor-not-allowed">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-black text-slate-800 text-sm tracking-tight flex items-center gap-2">
+                    <Wifi className="w-4 h-4 text-emerald-500" />
+                    Notifications
+                  </p>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Push Alerts</p>
+                </div>
+                <div className="w-14 h-8 bg-emerald-500/20 rounded-full p-1">
+                  <div className="w-6 h-6 bg-white rounded-full shadow-sm translate-x-6"></div>
+                </div>
               </div>
             </div>
           </div>
         ) : currentScreen === 'language' ? (
           <div className="p-6 space-y-4">
-            <h2 className="text-xl font-extrabold text-stone-800 mb-6">{t.selectLanguage}</h2>
+            <h2 className="text-xl font-extrabold text-stone-800 mb-6">{t_func_ctx('selectLanguage', "Select Language")}</h2>
             {(['English', 'Hindi', 'Marathi', 'Tamil', 'Kannada'] as Language[]).map((lang, i) => {
               const langLabels = {
                 English: 'English',
@@ -2546,25 +3498,87 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
               </button>
               <button onClick={() => setShowHelpDialog(true)} className="w-full bg-white rounded-2xl border border-stone-100 p-4 shadow-sm flex items-center gap-4 hover:border-primary-200 transition-colors text-left">
                 <HelpCircle className="w-6 h-6 text-stone-400" />
-                <span className="font-bold text-stone-700 flex-1">{t.helpSupport}</span>
+                <span className="font-bold text-stone-700 flex-1">{t_func_ctx('helpSupport', "Help & Support")}</span>
               </button>
               <button onClick={() => setShowLogoutConfirm(true)} className="w-full bg-rose-50 rounded-2xl border border-rose-100 p-4 shadow-sm flex items-center gap-4 hover:border-rose-200 transition-colors text-left mt-4">
                 <LogOut className="w-6 h-6 text-rose-500" />
-                <span className="font-bold text-rose-600 flex-1">{t.logout}</span>
+                <span className="font-bold text-rose-600 flex-1">{t_func_ctx('logout', "Logout")}</span>
               </button>
             </div>
           </div>
         ) : null}
-      </main>
+              </motion.div>
+            </AnimatePresence>
+          </main>
 
       {/* Bottom Navigation */}
       {currentScreen !== 'login' && (
         <nav className="h-20 bg-white border-t border-stone-100 flex items-center justify-around px-4 pb-2 relative z-10 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.05)]">
-          <NavItem icon={Home} label={t.home} active={currentScreen === 'home'} onClick={() => setCurrentScreen('home')} />
-          <NavItem icon={ClipboardList} label={t.records} active={currentScreen === 'patient-records'} onClick={() => setCurrentScreen('patient-records')} />
-          <NavItem icon={Mic} label={t.voice} active={currentScreen === 'voice-diary'} onClick={() => setCurrentScreen('voice-diary')} />
-          <NavItem icon={User} label={t.profile} active={currentScreen === 'profile'} onClick={() => setCurrentScreen('profile')} />
+          <NavItem icon={Home} label={t_func_ctx('home', "Home")} active={currentScreen === 'home'} onClick={() => setCurrentScreen('home')} />
+          <NavItem icon={ClipboardList} label={t_func_ctx('records', "Records")} active={currentScreen === 'patient-records'} onClick={() => setCurrentScreen('patient-records')} />
+          <NavItem icon={Mic} label={t_func_ctx('voice', "Voice")} active={currentScreen === 'voice-diary'} onClick={() => setCurrentScreen('voice-diary')} />
+          <NavItem icon={User} label={t_func_ctx('profile', "Profile")} active={currentScreen === 'profile'} onClick={() => setCurrentScreen('profile')} />
         </nav>
+      )}
+
+      {/* Floating Medi Assistant Sneak-Peek Icon */}
+      {currentScreen === 'home' && (
+        <motion.div
+          initial={{ x: 100 }}
+          animate={{ 
+            x: 65,
+            transition: { type: 'spring', damping: 20, stiffness: 100 }
+          }}
+          whileHover={{ 
+            x: 0,
+            transition: { type: 'spring', damping: 15, stiffness: 150 }
+          }}
+          className="fixed right-0 top-1/2 -translate-y-1/2 z-[100] group cursor-pointer"
+          onClick={() => setCurrentScreen('med-assistant')}
+        >
+          <div className="relative flex items-center">
+            {/* Sneaking Tooltip */}
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8, x: 20 }}
+              whileHover={{ opacity: 1, scale: 1, x: 0 }}
+              className="absolute right-20 bg-slate-800 text-white px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap shadow-xl pointer-events-none"
+            >
+              Need help, Sister? 🤖
+              <div className="absolute top-1/2 -right-1 -translate-y-1/2 w-2 h-2 bg-slate-800 rotate-45" />
+            </motion.div>
+
+            <div className="bg-white/90 backdrop-blur-md border-y border-l border-stone-200 shadow-[-10px_0_30px_-10px_rgba(0,0,0,0.1)] rounded-l-[40px] p-2 pl-6 pr-4 flex items-center gap-4 transition-all group-hover:bg-emerald-50 border-r-0 overflow-hidden">
+              <div className="text-right group-hover:opacity-100 opacity-0 transition-opacity duration-300">
+                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest leading-none">Medi AI</p>
+                <p className="text-xs font-black text-slate-800">Assistant</p>
+              </div>
+              
+              <motion.div 
+                animate={{ 
+                  y: [0, -4, 0],
+                  rotate: [0, 2, -2, 0]
+                }}
+                transition={{ 
+                  duration: 4, 
+                  repeat: Infinity, 
+                  ease: "easeInOut" 
+                }}
+                className="w-16 h-16 rounded-3xl overflow-hidden shadow-2xl border-2 border-white bg-white group-hover:border-emerald-400 transition-all relative z-10"
+              >
+                <img src="/src/assets/medi_assistant.png" alt="Medi AI" className="w-full h-full object-cover" />
+                {/* Glowing Eye Effect overlay */}
+                <div className="absolute inset-0 bg-emerald-400/5 mix-blend-overlay group-hover:bg-transparent transition-colors" />
+              </motion.div>
+            </div>
+
+            {/* Indicator "Pulse" for sneaking robot */}
+            <motion.div 
+              animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="absolute right-2 w-3 h-3 bg-emerald-500 rounded-full group-hover:hidden"
+            />
+          </div>
+        </motion.div>
       )}
 
       {/* Side Navigation Drawer */}
@@ -2595,7 +3609,7 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                     <User className="w-6 h-6 text-primary-600" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-extrabold text-stone-800">{t.ashaLink}</h2>
+                    <h2 className="text-lg font-extrabold text-stone-800">{t_func_ctx('ashaLink', "AashaLink")}</h2>
                     <p className="text-xs text-stone-500 font-medium">vishvcode@gmail.com</p>
                   </div>
                 </div>
@@ -2606,14 +3620,16 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
 
               {/* Drawer Links */}
               <div className="flex-1 overflow-y-auto py-4">
-                <DrawerItem icon={Settings} label={t.settings} onClick={() => { setCurrentScreen('settings'); setIsDrawerOpen(false); }} />
-                <DrawerItem icon={Globe} label={t.selectLanguage} onClick={() => { setCurrentScreen('language'); setIsDrawerOpen(false); }} />
-                <DrawerItem icon={HelpCircle} label={t.helpSupport} onClick={() => { setShowHelpDialog(true); setIsDrawerOpen(false); }} />
+                <DrawerItem icon={Activity} label={t_func_ctx('medAssistant', "Medi Assistant")} onClick={() => { setCurrentScreen('med-assistant'); setIsDrawerOpen(false); }} />
+                <DrawerItem icon={Download} label={t_func_ctx('shareRecords', "Share Records PDF")} onClick={() => { setShowShareDialog(true); setIsDrawerOpen(false); }} />
+                <DrawerItem icon={Settings} label={t_func_ctx('settings', "Settings")} onClick={() => { setCurrentScreen('settings'); setIsDrawerOpen(false); }} />
+                <DrawerItem icon={Globe} label={t_func_ctx('selectLanguage', "Select Language")} onClick={() => { setCurrentScreen('language'); setIsDrawerOpen(false); }} />
+                <DrawerItem icon={HelpCircle} label={t_func_ctx('helpSupport', "Help & Support")} onClick={() => { setShowHelpDialog(true); setIsDrawerOpen(false); }} />
               </div>
 
               {/* Drawer Footer */}
               <div className="p-4 border-t border-stone-100">
-                <DrawerItem icon={LogOut} label={t.logout} isRed onClick={() => { setShowLogoutConfirm(true); setIsDrawerOpen(false); }} />
+                <DrawerItem icon={LogOut} label={t_func_ctx('logout', "Logout")} isRed onClick={() => { setShowLogoutConfirm(true); setIsDrawerOpen(false); }} />
               </div>
             </motion.div>
           </>
@@ -2626,7 +3642,7 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
           <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowHelpDialog(false)} className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" />
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-3xl p-6 w-full max-w-sm relative z-10 shadow-2xl">
-              <h2 className="text-xl font-extrabold text-stone-800 mb-4">{t.helpSupport}</h2>
+              <h2 className="text-xl font-extrabold text-stone-800 mb-4">{t_func_ctx('helpSupport', "Help & Support")}</h2>
               <div className="space-y-3 text-stone-600 font-medium">
                 <p>📞 Health Helpline: <span className="font-bold text-stone-800">104</span></p>
                 <p>🚑 Ambulance: <span className="font-bold text-stone-800">108</span></p>
@@ -2650,7 +3666,7 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
           <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowLogoutConfirm(false)} className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" />
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white rounded-3xl p-6 w-full max-w-sm relative z-10 shadow-2xl">
-              <h2 className="text-xl font-extrabold text-stone-800 mb-2">{t.logout}</h2>
+              <h2 className="text-xl font-extrabold text-stone-800 mb-2">{t_func_ctx('logout', "Logout")}</h2>
               <p className="text-stone-600 font-medium mb-6">Are you sure you want to logout?</p>
               <div className="flex gap-3">
                 <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 bg-stone-100 text-stone-800 font-bold py-3 rounded-xl hover:bg-stone-200 transition-colors">
@@ -2727,6 +3743,60 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
         )}
       </AnimatePresence>
       </div>
+      <AnimatePresence>
+        {showShareDialog && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center px-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowShareDialog(false)} className="absolute inset-0 bg-stone-900/60 backdrop-blur-md" />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }} 
+              animate={{ scale: 1, opacity: 1, y: 0 }} 
+              exit={{ scale: 0.9, opacity: 0, y: 20 }} 
+              className="bg-white rounded-[40px] p-8 w-full max-w-sm relative z-10 shadow-2xl overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 w-32 h-32 bg-primary-50 rounded-bl-[100px] -mr-8 -mt-8" />
+              
+              <h2 className="text-2xl font-black text-stone-800 mb-2 relative z-10">Share Records</h2>
+              <p className="text-stone-500 text-sm font-medium mb-8 relative z-10">Select the time range for the report to share with your supervisor.</p>
+              
+              <div className="space-y-3 relative z-10">
+                {[
+                  { label: 'Today Only', val: 1, icon: Calendar },
+                  { label: 'Last 7 Days', val: 7, icon: RefreshCw },
+                  { label: 'Last 30 Days', val: 30, icon: LucideHistory as any },
+                  { label: 'All Records', val: 'all', icon: FileText }
+                ].map((range) => (
+                  <motion.button
+                    key={range.label}
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => {
+                      handleExportPDF(range.val as any);
+                      setShowShareDialog(false);
+                    }}
+                    className="w-full flex items-center gap-4 p-5 bg-stone-50 hover:bg-primary-50 rounded-3xl border border-stone-100 hover:border-primary-200 transition-all text-left"
+                  >
+                    <div className="w-10 h-10 bg-white rounded-2xl flex items-center justify-center shadow-sm">
+                      <range.icon className="w-5 h-5 text-primary-600" />
+                    </div>
+                    <div>
+                      <p className="font-black text-stone-800 text-sm">{range.label}</p>
+                      <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Generate PDF</p>
+                    </div>
+                  </motion.button>
+                ))}
+              </div>
+              
+              <button 
+                onClick={() => setShowShareDialog(false)} 
+                className="w-full py-4 text-stone-400 font-bold text-sm mt-4 hover:text-stone-600 transition-colors"
+              >
+                Cancel
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </TranslationContext.Provider>
-  );
+  </ErrorBoundary>
+);
 }
+

@@ -1,9 +1,9 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, addDoc, getDocs, updateDoc, doc, deleteDoc, query, where, onSnapshot } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 // Your web app's Firebase configuration
-// For actual use, configure these variables in your .env file
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "mock_api_key",
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "mock_project.firebaseapp.com",
@@ -17,8 +17,8 @@ const firebaseConfig = {
 let app;
 let db: any = {};
 let auth: any = {};
+let storage: any = {};
 
-// Use the user-provided debug token for phone verification/app check testing
 if (typeof window !== 'undefined') {
   (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = "AdrTqXG_MDs-SsxVvoFJ4L1VbiHwhH0f7QsMiw3uF09ryU8h3a4c-AEfftJioEZidX1EKfbRBTKgU8bs6wMzd3pinnTi-D14QKsd69ZE70cbBOPPFHuC-GaHse9EvC-WE5g0orSE1dvwCk_uhWBGCUM_jA";
 }
@@ -30,15 +30,16 @@ try {
     app = initializeApp(firebaseConfig);
     db = getFirestore(app);
     auth = getAuth(app);
-    auth.settings.appVerificationDisabledForTesting = true; // Make local testing easier
+    storage = getStorage(app);
+    auth.settings.appVerificationDisabledForTesting = true;
   }
 } catch (error) {
-  console.warn("Firebase initialization failed. Using mock services. Ensure .env has valid keys.");
+  console.warn("Firebase initialization failed. Using mock services.");
 }
 
-export { db, auth };
+export { db, auth, storage };
 
-// Helper functions for easy frontend access
+// Helper functions
 export const getCollectionData = async (collectionName: string) => {
   if (Object.keys(db).length === 0) return [];
   try {
@@ -60,6 +61,29 @@ export const addCollectionData = async (collectionName: string, data: any) => {
     return docRef.id;
   } catch (error) {
     console.error(`Error adding to ${collectionName}:`, error);
+    throw error;
+  }
+};
+
+export const updateCollectionData = async (collectionName: string, id: string, data: any) => {
+  if (Object.keys(db).length === 0) return;
+  try {
+    const docRef = doc(db, collectionName, id);
+    await updateDoc(docRef, data);
+  } catch (error) {
+    console.error(`Error updating ${collectionName}:`, error);
+    throw error;
+  }
+};
+
+export const uploadFile = async (path: string, file: File | Blob) => {
+  if (Object.keys(storage).length === 0) return "mock_url_" + Date.now();
+  try {
+    const storageRef = ref(storage, path);
+    await uploadBytes(storageRef, file);
+    return await getDownloadURL(storageRef);
+  } catch (error) {
+    console.error("Error uploading file:", error);
     throw error;
   }
 };

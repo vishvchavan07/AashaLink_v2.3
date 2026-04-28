@@ -36,5 +36,16 @@
   "greetingMorning": "Good morning, Anjali 🌿",
   "greetingAfternoon": "Good afternoon, Anjali ☀️",
   "greetingEvening": "Good evening, Anjali 🌙",
-  "patientsCardSubtitle": "Drift · encrypted"
+  "patientsCardSubtitle": "Drift · encrypted",
+  "loginTitle": "AashaLink",
+  "loginSubtitle": "Health Worker Companion",
+  "enterMobile": "Enter your mobile number",
+  "phoneHint": "9876543210",
+  "sendOtp": "Send OTP",
+  "otpTitle": "Enter OTP",
+  "otpSubtitle": "We sent a 6-digit code to your number.",
+  "verifyOtp": "Verify OTP",
+  "invalidPhone": "Enter a valid 10-digit mobile number",
+  "dpdpNotice": "Your data stays on your device.\nDPDP compliant · end-to-end encrypted.",
+  "offlineBanner": "Offline mode — data saves locally"
 }

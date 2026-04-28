@@ -30,7 +30,7 @@ class SyncService {
 
 final syncServiceProvider = Provider<SyncService>((ref) {
   return SyncService(
-    ref.read(dbProvider),
+    ref.watch(dbProvider),
     FirebaseFirestore.instance,
   );
 });

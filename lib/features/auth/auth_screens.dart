@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'auth_notifier.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../../core/theme/app_theme.dart';
 
 /// AuthGate — shown at route '/'.
@@ -56,6 +57,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: AppTheme.deepForest,
       body: SafeArea(
@@ -67,23 +69,23 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Spacer(),
-                const Text(
-                  'AashaLink',
-                  style: TextStyle(
+                Text(
+                  l10n.loginTitle,
+                  style: const TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.w800,
                     color: AppTheme.mintText,
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Health Worker Companion',
-                  style: TextStyle(fontSize: 14, color: AppTheme.mintSub),
+                Text(
+                  l10n.loginSubtitle,
+                  style: const TextStyle(fontSize: 14, color: AppTheme.mintSub),
                 ),
                 const SizedBox(height: 48),
-                const Text(
-                  'Enter your mobile number',
-                  style: TextStyle(
+                Text(
+                  l10n.enterMobile,
+                  style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.mintText,
@@ -97,7 +99,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                   decoration: InputDecoration(
                     prefixText: '+91 ',
                     prefixStyle: const TextStyle(color: AppTheme.mintSub, fontSize: 18),
-                    hintText: '9876543210',
+                    hintText: l10n.phoneHint,
                     hintStyle: const TextStyle(color: Colors.white30),
                     fillColor: AppTheme.forestCard,
                     filled: true,
@@ -116,7 +118,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                   ),
                   validator: (v) {
                     if (v == null || v.trim().length != 10) {
-                      return 'Enter a valid 10-digit mobile number';
+                      return l10n.invalidPhone;
                     }
                     return null;
                   },
@@ -137,18 +139,18 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                             height: 22,
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                           )
-                        : const Text(
-                            'Send OTP',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
+                        : Text(
+                            l10n.sendOtp,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
                           ),
                   ),
                 ),
                 const Spacer(flex: 2),
-                const Center(
+                Center(
                   child: Text(
-                    'Your data stays on your device.\nDPDP compliant · end-to-end encrypted.',
+                    l10n.dpdpNotice,
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 11, color: AppTheme.mintSub, height: 1.6),
+                    style: const TextStyle(fontSize: 11, color: AppTheme.mintSub, height: 1.6),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -199,6 +201,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: AppTheme.deepForest,
       appBar: AppBar(
@@ -214,18 +217,18 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 16),
-              const Text(
-                'Enter OTP',
-                style: TextStyle(
+              Text(
+                l10n.otpTitle,
+                style: const TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w800,
                   color: AppTheme.mintText,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                'We sent a 6-digit code to your number.',
-                style: TextStyle(fontSize: 13, color: AppTheme.mintSub),
+              Text(
+                l10n.otpSubtitle,
+                style: const TextStyle(fontSize: 13, color: AppTheme.mintSub),
               ),
               const SizedBox(height: 36),
               TextField(
@@ -276,9 +279,9 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                           height: 22,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text(
-                          'Verify OTP',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
+                      : Text(
+                          l10n.verifyOtp,
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
                         ),
                 ),
               ),

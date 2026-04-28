@@ -1,21 +1,81 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Outfit", "Inter", ui-sans-serif, system-ui, sans-serif;
   
-  --color-primary-50: #f0fdfa;
-  --color-primary-100: #ccfbf1;
-  --color-primary-500: #14b8a6;
-  --color-primary-600: #0d9488;
-  --color-primary-700: #0f766e;
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-200: #bfdbfe;
+  --color-primary-300: #93c5fd;
+  --color-primary-400: #60a5fa;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-primary-800: #1e40af;
+  --color-primary-900: #1e3a8a;
   
-  --color-surface: #ffffff;
-  --color-background: #fafaf9; /* stone-50 */
+  --color-surface: rgba(255, 255, 255, 0.85);
+  --color-surface-hover: rgba(255, 255, 255, 0.95);
+  --color-background-start: #f8fafc;
+  --color-background-end: #e2e8f0;
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+  --color-border: rgba(255, 255, 255, 0.4);
+}
+
+.dark {
+  --color-surface: rgba(15, 23, 42, 0.8);
+  --color-surface-hover: rgba(30, 41, 59, 0.9);
+  --color-background-start: #020617;
+  --color-background-end: #0f172a;
+  --color-text: #f8fafc;
+  --color-text-muted: #94a3b8;
+  --color-border: rgba(255, 255, 255, 0.1);
+}
+
+@layer utilities {
+  .glass-panel {
+    background: var(--color-surface);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--color-border);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+  }
+  .glass-card {
+    background: var(--color-surface);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--color-border);
+    @apply shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-1;
+  }
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-400 to-indigo-400;
+  }
 }
 
 body {
   font-family: var(--font-sans);
-  background-color: var(--color-background);
-  color: #1c1917; /* stone-900 */
+  background: linear-gradient(135deg, var(--color-background-start) 0%, var(--color-background-end) 100%);
+  background-attachment: fixed;
+  color: var(--color-text);
+  min-height: 100vh;
+  transition: background 0.3s ease, color 0.3s ease;
+  
+  /* Native App Feel Properties */
+  -webkit-touch-callout: none; /* Disable iOS touch callout */
+  -webkit-user-select: none;   /* Disable text selection */
+  user-select: none;
+  -webkit-tap-highlight-color: transparent; /* Remove tap highlight */
+  overscroll-behavior-y: none; /* Prevent pull-to-refresh bounce */
+}
+
+/* Allow text selection only in inputs and textareas */
+input, textarea {
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+
+/* Custom Scrollbar - Hidden for native feel but functional */
+::-webkit-scrollbar {
+  display: none; /* Hide scrollbar for a cleaner app UI */
+  width: 0px;
 }

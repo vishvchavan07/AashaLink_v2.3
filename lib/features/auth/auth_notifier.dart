@@ -92,8 +92,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> verifyOtp(String otp) async {
     if (state.verificationId == null) return;
     try {
+      final vId = state.verificationId;
+      if (vId == null) throw Exception('Verification ID is missing');
       final credential = PhoneAuthProvider.credential(
-        verificationId: state.verificationId!,
+        verificationId: vId,
         smsCode:        otp,
       );
       final result = await _auth.signInWithCredential(credential);

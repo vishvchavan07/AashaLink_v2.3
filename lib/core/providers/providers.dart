@@ -47,7 +47,7 @@ final connectivityProvider = StreamProvider<ConnectivityResult>((ref) {
 final workerProvider = FutureProvider<Worker?>((ref) async {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   if (uid == null) return null;
-  return ref.read(dbProvider).getWorkerByUid(uid);
+  return ref.watch(dbProvider).getWorkerByUid(uid);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ class TodayStats {
 }
 
 final todayStatsProvider = FutureProvider<TodayStats>((ref) async {
-  final db  = ref.read(dbProvider);
+  final db  = ref.watch(dbProvider);
   final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
   final screened   = await db.getTodaySessionCount(uid);
   final referred   = await db.getTodayReferredCount(uid);

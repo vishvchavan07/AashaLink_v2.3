@@ -45,7 +45,7 @@ class HomeScreen extends ConsumerWidget {
                   child: Row(children: const [
                     Icon(Icons.cloud_off_rounded, size: 14, color: AppTheme.sosBorder),
                     SizedBox(width: 6),
-                    Text('Offline mode — data saves locally', style: TextStyle(fontSize: 11, color: AppTheme.sosBorder)),
+                    Text(l10n.offlineBanner, style: const TextStyle(fontSize: 11, color: AppTheme.sosBorder)),
                   ]),
                 ),
 

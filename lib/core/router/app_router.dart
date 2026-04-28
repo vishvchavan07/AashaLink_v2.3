@@ -70,7 +70,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/patients/:id',
         name: 'patientDetail',
         builder: (context, state) {
-          final id = int.parse(state.pathParameters['id']!);
+          final idStr = state.pathParameters['id'];
+          if (idStr == null) return const Scaffold(body: Center(child: Text('Missing Patient ID')));
+          final id = int.parse(idStr);
           return PatientDetailScreen(patientId: id);
         },
       ),
