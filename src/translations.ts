@@ -134,7 +134,7 @@ export const translations: Record<Language, Record<string, string>> = {
     savedEntries: "Saved Entries",
     recordingFor: "Recording for:",
     transcript: "Transcript",
-    transcribing: "Transcribing with Google Cloud AI...",
+    transcribing: "Transcribing with Gemini AI...",
     diaryPlaceholder: "Tap the microphone below to start recording, or type your manual diary entry here...",
     searchByPatient: "Search by patient or keyword...",
     sort: "Sort",
