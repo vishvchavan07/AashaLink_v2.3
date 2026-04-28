@@ -47,7 +47,8 @@ import {
   Package,
   History as LucideHistory,
   Moon,
-  Sun
+  Sun,
+  Share2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
