@@ -959,6 +959,37 @@ export default function App() {
     longitude: undefined
   });
 
+  const handleAddPatient = async () => {
+    if (!newPatient.name || !newPatient.age) {
+      alert("Name and Age are required.");
+      return;
+    }
+
+    const patientToAdd = {
+      ...newPatient,
+      date: new Date().toISOString().split('T')[0]
+    };
+
+    setPatients(prev => [...prev, patientToAdd]);
+    
+    // Save to Firebase if online
+    if (Object.keys(db).length !== 0) {
+      try {
+        await addDoc(collection(db, 'patients'), patientToAdd);
+      } catch (e) {
+        console.error("Firebase sync failed, saved locally.");
+      }
+    }
+
+    setIsAddModalOpen(false);
+    setNewPatient({ 
+      name: '', age: '', loc: '', disease: '', 
+      date: new Date().toISOString().split('T')[0], 
+      bloodGroup: 'A+', dob: '', contact: '', emergencyContact: '', 
+      address: '', photo: '', latitude: undefined, longitude: undefined 
+    });
+  };
+
   useEffect(() => {
     localStorage.setItem('aashalink_patients', JSON.stringify(patients));
   }, [patients]);
