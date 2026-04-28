@@ -1,0 +1,1 @@
+ /Users/vishv/AashaLinkV.1.2/lib/core/l10n/app_localizations_en.dart /Users/vishv/AashaLinkV.1.2/lib/core/l10n/app_localizations_hi.dart /Users/vishv/AashaLinkV.1.2/lib/core/l10n/app_localizations.dart:  /Users/vishv/AashaLinkV.1.2/l10n.yaml /Users/vishv/AashaLinkV.1.2/lib/core/l10n/app_en.arb /Users/vishv/AashaLinkV.1.2/lib/core/l10n/app_hi.arb

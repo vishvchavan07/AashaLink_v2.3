@@ -7,6 +7,7 @@ const getModel = (apiKey: string) => {
 
 export const transcribeAudioWithGemini = async (audioBlob: Blob, language: string, apiKey: string): Promise<string> => {
   try {
+    console.log("Starting Gemini Transcription. MIME:", audioBlob.type, "Size:", audioBlob.size);
     const model = getModel(apiKey);
     
     // Convert blob to base64
@@ -20,6 +21,7 @@ export const transcribeAudioWithGemini = async (audioBlob: Blob, language: strin
     });
     
     const base64Data = await base64Promise;
+    console.log("Audio converted to Base64. Length:", base64Data.length);
     
     const result = await model.generateContent([
       {
@@ -28,12 +30,17 @@ export const transcribeAudioWithGemini = async (audioBlob: Blob, language: strin
           mimeType: audioBlob.type || "audio/webm"
         }
       },
-      { text: `Transcribe this audio accurately in ${language}. Provide only the transcription text.` }
+      { text: `Transcribe this audio accurately in ${language}. Provide only the transcription text. If no speech is found, return an empty string.` }
     ]);
     
-    return result.response.text().trim();
-  } catch (error) {
+    const responseText = result.response.text();
+    console.log("Gemini Response Received:", responseText);
+    return responseText.trim();
+  } catch (error: any) {
     console.error("Gemini Transcription failed:", error);
+    if (error.message?.includes("API key")) {
+      throw new Error("Invalid Gemini API Key. Please check your .env file.");
+    }
     throw error;
   }
 };

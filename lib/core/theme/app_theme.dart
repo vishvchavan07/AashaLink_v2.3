@@ -17,6 +17,14 @@ abstract final class AppTheme {
   static const coralText    = Color(0xFFF0997B);
   static const amberDev     = Color(0xFF854F0B);
   static const surface      = Color(0xFFF5F9F7);
+  static const glassWhite    = Color(0x1AFFFFFF);
+  static const glassBorder   = Color(0x33FFFFFF);
+
+  static const forestGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [deepForest, Color(0xFF064D41)],
+  );
 
   static ThemeData get darkTheme {
     final base = ThemeData(

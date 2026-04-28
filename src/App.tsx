@@ -47,7 +47,8 @@ import {
   Package,
   History as LucideHistory,
   Moon,
-  Sun
+  Sun,
+  Share2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
@@ -1209,12 +1210,11 @@ export default function App() {
         };
 
         mediaRecorder.onstop = async () => {
-          const audioBlob = new Blob(medAudioChunksRef.current, { type: 'audio/webm' });
-          const apiKey = import.meta.env.VITE_GOOGLE_SPEECH_API_KEY;
-          const projectId = import.meta.env.VITE_GOOGLE_PROJECT_ID;
+          const audioBlob = new Blob(medAudioChunksRef.current, { type: medRecorderRef.current?.mimeType || 'audio/webm' });
+          const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
           
-          if (!apiKey || !projectId) {
-            alert('Google Cloud API Key or Project ID is missing in .env');
+          if (!apiKey || apiKey.includes('your_gemini')) {
+            alert('Gemini API Key is missing in .env');
             return;
           }
 
@@ -1275,12 +1275,11 @@ export default function App() {
         };
 
         mediaRecorder.onstop = async () => {
-          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          const apiKey = import.meta.env.VITE_GOOGLE_SPEECH_API_KEY;
-          const projectId = import.meta.env.VITE_GOOGLE_PROJECT_ID;
+          const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.mimeType || 'audio/webm' });
+          const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
-          if (!apiKey || !projectId) {
-            alert('Google Cloud API Key or Project ID is missing in .env');
+          if (!apiKey || apiKey.includes('your_gemini')) {
+            alert('Gemini API Key is missing in .env');
             return;
           }
 
@@ -1439,7 +1438,48 @@ export default function App() {
     setMedInput({ name: '', disease: '', symptoms: '', time: '', existing: '' });
   };
 
-  const medicalDataset: MedicalRecord[] = [];
+  const medicalDataset: MedicalRecord[] = [
+    {
+      id: 1,
+      disease: 'Dengue Fever',
+      keywords: ['high fever', 'severe headache', 'pain behind eyes', 'joint pain', 'muscle pain', 'rash', 'nausea'],
+      medicines: 'Paracetamol 500mg, Hydration',
+      precautions: 'Use mosquito nets, wear long sleeves, remove stagnant water.',
+      red_flags: 'Severe abdominal pain, persistent vomiting, bleeding from gums or nose, difficulty breathing.',
+      remedies: 'Rest, plenty of fluids, papaya leaf extract (traditional).',
+      duration_warning: 'Symptoms typically last 2-7 days.'
+    },
+    {
+      id: 2,
+      disease: 'Common Cold / Flu',
+      keywords: ['fever', 'cough', 'sore throat', 'runny nose', 'sneezing', 'body ache'],
+      medicines: 'Cetirizine, Paracetamol, Vitamin C',
+      precautions: 'Hand washing, avoid close contact, wear mask.',
+      red_flags: 'High fever (>102F), chest pain, severe cough, difficulty swallowing.',
+      remedies: 'Warm saltwater gargle, steam inhalation, ginger tea.',
+      duration_warning: 'Should improve in 5-7 days.'
+    },
+    {
+      id: 3,
+      disease: 'Acute Diarrhea',
+      keywords: ['loose stools', 'stomach cramps', 'nausea', 'vomiting', 'bloating'],
+      medicines: 'ORS (Oral Rehydration Salts), Zinc tablets',
+      precautions: 'Wash hands with soap, drink boiled water, keep food covered.',
+      red_flags: 'Signs of dehydration (dry mouth, sunken eyes), bloody stools, severe weakness.',
+      remedies: 'Coconut water, rice water, curd (probiotics).',
+      duration_warning: 'Seek medical help if it persists beyond 48 hours.'
+    },
+    {
+      id: 4,
+      disease: 'Anemia',
+      keywords: ['fatigue', 'weakness', 'pale skin', 'dizziness', 'shortness of breath', 'brittle nails'],
+      medicines: 'Iron and Folic Acid (IFA) tablets',
+      precautions: 'Eat iron-rich foods, avoid tea/coffee immediately after meals.',
+      red_flags: 'Fainting spells, rapid heartbeat, extreme paleness.',
+      remedies: 'Spinach, jaggery, amla, lentils, pomegranate.',
+      duration_warning: 'Requires long-term dietary adjustment and supplementation.'
+    }
+  ];
 
   const handleAnalyze = async () => {
     if (!medInput.symptoms) return;
@@ -1492,7 +1532,7 @@ export default function App() {
       }
     };
 
-    if (network === 'Good' || !import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY.includes('your_gemini')) {
+    if (network === 'Good' && import.meta.env.VITE_GEMINI_API_KEY && !import.meta.env.VITE_GEMINI_API_KEY.includes('your_gemini')) {
       // Online mode: Call Gemini AI
       try {
         const { GoogleGenerativeAI } = await import('@google/generative-ai');
@@ -2667,7 +2707,7 @@ Crucially, all the values inside the JSON MUST be translated to this language: $
                     {isTranscribing && (
                       <div className="absolute inset-0 bg-white/80 z-10 flex flex-col items-center justify-center backdrop-blur-sm rounded-xl">
                         <div className="w-10 h-10 border-4 border-primary-100 border-t-primary-600 rounded-full animate-spin mb-3"></div>
-                        <p className="text-stone-600 font-bold animate-pulse"><T k="transcribing">Transcribing with Google Cloud AI...</T></p>
+                        <p className="text-stone-600 font-bold animate-pulse"><T k="transcribing">Transcribing with Gemini AI...</T></p>
                       </div>
                     )}
                     <textarea

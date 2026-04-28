@@ -1,14 +1,5 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/providers/providers.dart';
-import '../../sos/presentation/sos_button.dart';
-import 'worker_strip.dart';
-import 'feature_grid.dart';
-import 'stats_row.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -42,12 +33,12 @@ class HomeScreen extends ConsumerWidget {
                 Container(
                   color: AppTheme.sosBorder.withOpacity(0.15),
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  child: Row(children: const [
-                    Icon(Icons.cloud_off_rounded, size: 14, color: AppTheme.sosBorder),
-                    SizedBox(width: 6),
+                  child: Row(children: [
+                    const Icon(LucideIcons.cloudOff, size: 14, color: AppTheme.sosBorder),
+                    const SizedBox(width: 6),
                     Text(l10n.offlineBanner, style: const TextStyle(fontSize: 11, color: AppTheme.sosBorder)),
                   ]),
-                ),
+                ).animate().fadeIn().slideY(begin: -1),
 
               // App bar
               Padding(
@@ -58,29 +49,34 @@ class HomeScreen extends ConsumerWidget {
                       style: const TextStyle(fontSize: 10, letterSpacing: 1.6, color: AppTheme.mintSub, fontWeight: FontWeight.w600)),
                     const SizedBox(height: 2),
                     Text(l10n.ashaLink,
-                      style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w500, color: AppTheme.mintText)),
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.white)),
                   ]),
                   const Spacer(),
                   GestureDetector(
                     onTap: () => context.push('/settings'),
                     child: Container(
-                      width: 40, height: 40,
+                      width: 42, height: 42,
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle, color: AppTheme.forestCard,
-                        border: Border.all(color: AppTheme.vitalsGreen, width: 2)),
+                        shape: BoxShape.circle, 
+                        color: AppTheme.forestCard,
+                        border: Border.all(color: AppTheme.vitalsGreen.withOpacity(0.5), width: 2),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 4)),
+                        ],
+                      ),
                       child: Center(child: Text(
                         workerAsync.valueOrNull?.name.isNotEmpty == true
                             ? workerAsync.valueOrNull!.name[0].toUpperCase()
                             : 'A',
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.mintSub))),
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.mintText))),
                     ),
-                  ),
+                  ).animate().scale(delay: 200.ms, duration: 400.ms, curve: Curves.backOut),
                 ]),
               ),
 
               const SizedBox(height: 20),
-              const SosButton(),
-              const SizedBox(height: 20),
+              const SosButton().animate().fadeIn(delay: 300.ms).slideY(begin: 0.2),
+              const SizedBox(height: 24),
             ]),
           ),
 
@@ -98,7 +94,8 @@ class HomeScreen extends ConsumerWidget {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     // Greeting
                     Text(_greeting(l10n),
-                      style: const TextStyle(fontSize: 14, color: AppTheme.vitalsGreen, fontStyle: FontStyle.italic)),
+                      style: const TextStyle(fontSize: 14, color: AppTheme.vitalsGreen, fontWeight: FontWeight.w600))
+                      .animate().fadeIn(delay: 400.ms).slideX(begin: -0.1),
                     const SizedBox(height: 14),
 
                     // Worker strip (real name + block from provider)
@@ -111,11 +108,11 @@ class HomeScreen extends ConsumerWidget {
                       ),
                       loading: () => const WorkerStrip(patientCount: 0, referredCount: 0),
                       error:   (_, __) => const WorkerStrip(patientCount: 0, referredCount: 0),
-                    ),
+                    ).animate().fadeIn(delay: 500.ms).slideY(begin: 0.1),
                     const SizedBox(height: 14),
 
                     // Symptom hero card
-                    _SymptomHeroCard(l10n: l10n),
+                    _SymptomHeroCard(l10n: l10n).animate().fadeIn(delay: 600.ms).scale(begin: const Offset(0.95, 0.95)),
                     const SizedBox(height: 14),
 
                     // Feature grid
@@ -124,7 +121,7 @@ class HomeScreen extends ConsumerWidget {
                       onPatients:   () => context.push('/patients'),
                       onBedFinder:  () => context.push('/resources/beds'),
                       onBloodBank:  () => context.push('/resources/blood'),
-                    ),
+                    ).animate().fadeIn(delay: 700.ms),
                     const SizedBox(height: 14),
 
                     // Stats row (live from provider)
@@ -132,7 +129,7 @@ class HomeScreen extends ConsumerWidget {
                       data: (s) => StatsRow(screened: s.screened, referred: s.referred, voiceLogs: s.voiceLogs),
                       loading: () => const StatsRow(screened: 0, referred: 0, voiceLogs: 0),
                       error:   (_, __) => const StatsRow(screened: 0, referred: 0, voiceLogs: 0),
-                    ),
+                    ).animate().fadeIn(delay: 800.ms).slideY(begin: 0.2, end: 0),
                   ]),
                 ),
               ),
