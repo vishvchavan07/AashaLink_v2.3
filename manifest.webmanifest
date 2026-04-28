@@ -1,0 +1,1 @@
+{"name":"AashaLink OS","short_name":"AashaLink","description":"Health Worker Companion App","start_url":"./","display":"standalone","background_color":"#ffffff","theme_color":"#04342C","lang":"en","scope":"./","icons":[{"src":"pwa-192x192.png","sizes":"192x192","type":"image/png"},{"src":"pwa-512x512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}]}
