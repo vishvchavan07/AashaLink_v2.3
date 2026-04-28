@@ -1211,11 +1211,10 @@ export default function App() {
 
         mediaRecorder.onstop = async () => {
           const audioBlob = new Blob(medAudioChunksRef.current, { type: 'audio/webm' });
-          const apiKey = import.meta.env.VITE_GOOGLE_SPEECH_API_KEY;
-          const projectId = import.meta.env.VITE_GOOGLE_PROJECT_ID;
+          const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
           
-          if (!apiKey || !projectId) {
-            alert('Google Cloud API Key or Project ID is missing in .env');
+          if (!apiKey || apiKey.includes('your_gemini')) {
+            alert('Gemini API Key is missing in .env');
             return;
           }
 
@@ -1277,11 +1276,10 @@ export default function App() {
 
         mediaRecorder.onstop = async () => {
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          const apiKey = import.meta.env.VITE_GOOGLE_SPEECH_API_KEY;
-          const projectId = import.meta.env.VITE_GOOGLE_PROJECT_ID;
+          const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
-          if (!apiKey || !projectId) {
-            alert('Google Cloud API Key or Project ID is missing in .env');
+          if (!apiKey || apiKey.includes('your_gemini')) {
+            alert('Gemini API Key is missing in .env');
             return;
           }
 
